@@ -6,7 +6,7 @@
 // Definición única de las variables globales
 volatile uint8_t rx_buffer[MODBUS_BUFFER_SIZE];
 volatile uint16_t holding_registers[HOLDING_REG_COUNT];
-
+volatile uint32_t system_ms = 0;
 
 
 uint16_t Modbus_Read_Register(uint16_t reg) {
@@ -34,45 +34,72 @@ uint16_t crc16(const uint8_t *buf, uint8_t len) {
 
 void Modbus_Service(void) {
 	if (!flags.datos_listos) return;   // no hay trama completa
-
 	flags.datos_listos = false;        // limpiar flag
 
 	if (usart.rx_index < 7) {
 		usart.rx_index = 0;
-		//return;
+		return;
 	} // trama mínima
-	
+
 	uint8_t addr = usart.rx_buffer[0];
 	uint8_t func = usart.rx_buffer[1];
 	uint16_t start = (usart.rx_buffer[2] << 8) | usart.rx_buffer[3];
-	uint16_t count = (usart.rx_buffer[4] << 8) | usart.rx_buffer[5];
-	
-	uint16_t crc_rx = usart.rx_buffer[usart.rx_index - 2] |
-	(usart.rx_buffer[usart.rx_index - 1] << 8);
-	uint16_t crc_calc = crc16(usart.rx_buffer, usart.rx_index - 2);
+	uint16_t count_or_val = (usart.rx_buffer[4] << 8) | usart.rx_buffer[5];
 
-	if (crc_rx != crc_calc) {
+	uint16_t crc_rx = (usart.rx_buffer[usart.rx_index - 2]) |
+	(usart.rx_buffer[usart.rx_index - 1] << 8);
+	uint16_t crc_calc = crc16((const uint8_t*)usart.rx_buffer, usart.rx_index - 2);
+
+	if (addr != 0x0A || crc_rx != crc_calc) {
 		usart.rx_index = 0;
-		//return; // CRC inválido
+		return;
 	}
 
+	// ---------------------------
+	// Función 0x03: Read Holding Registers
+	// ---------------------------
 	if (func == 0x03) {
 		uint8_t resp[64];
 		resp[0] = addr;
 		resp[1] = func;
-		resp[2] = count * 2;
+		resp[2] = count_or_val * 2;
 
-		for (uint16_t i = 0; i < count; i++) {
+		for (uint16_t i = 0; i < count_or_val; i++) {
 			uint16_t val = Modbus_Read_Register(start + i);
 			resp[3 + i*2] = val >> 8;
 			resp[4 + i*2] = val & 0xFF;
 		}
 
-		uint16_t crc = crc16(resp, 3 + count*2);
-		resp[3 + count*2] = crc & 0xFF;
-		resp[4 + count*2] = crc >> 8;
+		uint16_t crc = crc16(resp, 3 + count_or_val*2);
+		resp[3 + count_or_val*2] = crc & 0xFF;
+		resp[4 + count_or_val*2] = crc >> 8;
 
-		for (uint8_t i = 0; i < 5 + count*2; i++) {
+		for (uint8_t i = 0; i < 5 + count_or_val*2; i++) {
+			while (!(UCSR0A & (1 << UDRE0)));
+			UDR0 = resp[i];
+		}
+	}
+
+	// ---------------------------
+	// Función 0x06: Write Single Register
+	// ---------------------------
+	else if (func == 0x06) {
+		uint16_t value = count_or_val; // valor a escribir
+
+		// Actualiza el registro en el micro
+		Modbus_Write_Register(start, value);
+
+		// Eco de la petición como respuesta (Modbus estándar)
+		uint8_t resp[8];
+		for (uint8_t i = 0; i < 6; i++) {
+			resp[i] = usart.rx_buffer[i]; // dirección, función, reg, valor
+		}
+
+		uint16_t crc = crc16(resp, 6);
+		resp[6] = crc & 0xFF;
+		resp[7] = crc >> 8;
+
+		for (uint8_t i = 0; i < 8; i++) {
 			while (!(UCSR0A & (1 << UDRE0)));
 			UDR0 = resp[i];
 		}
@@ -80,6 +107,23 @@ void Modbus_Service(void) {
 
 	usart.rx_index = 0; // limpiar buffer
 }
+
+void Modbus_Write_Register(uint16_t reg, uint16_t value) {
+	if (reg < HOLDING_REG_COUNT) {
+		holding_registers[reg] = value;
+
+		// Aquí puedes disparar acciones según el registro
+		// Ejemplo:
+		if (reg == 0x0005) {   // registro de alarma
+			if (value == 1) {
+				// activar alarma
+				} else {
+				// desactivar alarma
+			}
+		}
+	}
+}
+
 
 void Modbus_Update_Registers(void) {
 	// Actualiza con tus sensores

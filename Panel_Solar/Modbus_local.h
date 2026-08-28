@@ -9,10 +9,14 @@
 
 extern volatile uint16_t holding_registers[HOLDING_REG_COUNT];
 
+extern volatile uint32_t system_ms;
+
 void Modbus_Init(void);
 void Modbus_Service(void);
 uint16_t Modbus_Read_Register(uint16_t reg);
 void Modbus_Update_Registers(void);
+void Modbus_Write_Register(uint16_t reg, uint16_t value);
+
 
 #endif
 
