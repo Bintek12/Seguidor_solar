@@ -1,0 +1,26 @@
+## Ignorar archivos temporales y resultados de compilación de Atmel Studio
+# https://www.microchip.com/mplab/avr-support/atmel-studio-7
+
+# Atmel Studio funciona sobre una versión antigua de Visual Studio,
+# por lo que la mayoría de los archivos de proyecto y solución son iguales,
+# solo que con el prefijo 'at'.
+
+# Directorios de compilación
+[Dd]ebug/
+[Rr]elease/
+Panel_Solar/Debug/   # Puedes mantener tu regla específica si quieres
+
+# Archivos de Visual Studio
+.vs/
+
+# Resultados de compilación
+*.o
+*.d
+*.eep
+*.elf
+*.hex
+*.map
+*.srec
+
+# Archivos específicos de usuario
+*.atsuo
