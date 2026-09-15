@@ -254,8 +254,8 @@ void Panel::aplicarControlMotor() {
 		}
 	}
 }
-float Panel::readTemperature() {
-	uint16_t adc = leerADC(6); // ADC6
+float Panel::readTemperature(int ch) {
+	uint16_t adc = leerADC(ch); // ADC6
 	return calcularTemperatura(adc);
 }
 

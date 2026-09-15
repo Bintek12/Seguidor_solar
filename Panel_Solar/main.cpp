@@ -37,8 +37,6 @@ ISR(USART_RX_vect){
 	TCNT2 = 0;    // Reinicializa Timer de recepción
 	TCCR2B = 0x07;  // Arranca temporizador f = Ck/1024  = 15625 Hz
 	TIMSK2 |=  (1<<TOIE2);  // habilita interrupción counter2 ovf
-	//PORTD ^=(1<<PD3);//solo para probar
-	//PORTD =(1<<PD3);//solo para probar
 }
 
 /* Timer 2 overflow interrupt service routine

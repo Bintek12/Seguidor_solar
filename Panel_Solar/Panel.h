@@ -35,7 +35,7 @@ class Panel {
 	float getStopThreshold() const;
 
 	// Temperatura (NTC en ADC6)
-	float readTemperature();
+	float readTemperature(int ch);
 
 	// Alarmas y límites
 	bool isAlarm() const;

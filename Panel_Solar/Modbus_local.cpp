@@ -1,5 +1,6 @@
 ﻿#include "main.h"
 #include "Modbus_local.h"
+#include "panel.h"
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
@@ -8,6 +9,7 @@ volatile uint8_t rx_buffer[MODBUS_BUFFER_SIZE];
 volatile uint16_t holding_registers[HOLDING_REG_COUNT];
 volatile uint32_t system_ms = 0;
 
+Panel PANEL_Solar;
 
 uint16_t Modbus_Read_Register(uint16_t reg) {
 	if (reg < HOLDING_REG_COUNT) return holding_registers[reg];
@@ -127,15 +129,15 @@ void Modbus_Write_Register(uint16_t reg, uint16_t value) {
 
 void Modbus_Update_Registers(void) {
 	// Actualiza con tus sensores
-	holding_registers[0] = 10/* temp panel 1 */;
-	holding_registers[1] = 20/* temp panel 2 */;
-	holding_registers[2] = 30/* LDR Este */;
-	holding_registers[3] = 40/* LDR Oeste */;
-	holding_registers[4] = 50/* Azimut */;
-	holding_registers[5] = 60/* alarma */;
-	holding_registers[0x10] = 100/* segundos */;
-	holding_registers[0x11] = 200/* minutos */;
-	holding_registers[0x12] = 300/* horas */;
-	holding_registers[0x13] = 400/* día */;
-	holding_registers[0x14] = 0x0826/* mes/año */;
+	holding_registers[0] = PANEL_Solar.readTemperature(6); /* temp panel 1 */
+	holding_registers[1] = PANEL_Solar.readTemperature(0);/* temp panel 2 */
+	holding_registers[2] = PANEL_Solar.getEastFiltered();/* LDR Este */
+	holding_registers[3] = PANEL_Solar.getWestFiltered();/* LDR Oeste */
+	holding_registers[4] = 50;/* Azimut */
+	holding_registers[5] = 60;/* alarma */
+	holding_registers[0x10] = 30;/* segundos */
+	holding_registers[0x11] = 05;/* minu*/
+	holding_registers[0x12] = 12;/* horas */
+	holding_registers[0x13] = 2;/* día */
+	holding_registers[0x14] = 0x0826;/* mes/año */
 }
