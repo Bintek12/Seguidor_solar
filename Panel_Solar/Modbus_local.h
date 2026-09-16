@@ -7,7 +7,9 @@
 #define MODBUS_BUFFER_SIZE  64
 #define HOLDING_REG_COUNT   32
 
-extern volatile uint16_t holding_registers[HOLDING_REG_COUNT];
+//extern volatile uint16_t holding_registers[HOLDING_REG_COUNT];
+extern unsigned int holding_registers[HOLDING_REG_COUNT];
+
 
 extern volatile uint32_t system_ms;
 

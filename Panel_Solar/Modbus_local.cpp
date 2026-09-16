@@ -6,7 +6,7 @@
 
 // Definición única de las variables globales
 volatile uint8_t rx_buffer[MODBUS_BUFFER_SIZE];
-volatile uint16_t holding_registers[HOLDING_REG_COUNT];
+//volatile uint16_t holding_registers[HOLDING_REG_COUNT];
 volatile uint32_t system_ms = 0;
 
 Panel PANEL_Solar;
@@ -16,7 +16,6 @@ uint16_t Modbus_Read_Register(uint16_t reg) {
 	return 0;
 }
 
-// Calcula CRC16 Modbus RTU
 uint16_t crc16(const uint8_t *buf, uint8_t len) {
 	uint16_t crc = 0xFFFF;
 	for (uint8_t pos = 0; pos < len; pos++) {
@@ -32,7 +31,6 @@ uint16_t crc16(const uint8_t *buf, uint8_t len) {
 	}
 	return crc;
 }
-
 
 void Modbus_Service(void) {
 	if (!flags.datos_listos) return;   // no hay trama completa
@@ -125,7 +123,6 @@ void Modbus_Write_Register(uint16_t reg, uint16_t value) {
 		}
 	}
 }
-
 
 void Modbus_Update_Registers(void) {
 	// Actualiza con tus sensores

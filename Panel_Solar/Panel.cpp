@@ -11,6 +11,9 @@ const float Panel::SERIES_RESISTOR = 10000.0f;
 const float Panel::NTC_BETA = 3950.0f;
 const float Panel::NTC_R25 = 10000.0f;
 
+inline int8_t signoDe(Direccion d) {
+	return static_cast<int8_t>(d);
+}
 
 Panel::Panel()
 : eastFiltered(0), westFiltered(0), error(0), stopThreshold(5.0f),
@@ -19,7 +22,8 @@ integral(0), prevError(0), maxOutput(100.0f),// minOutput(-100.0f),
 maIndexEast(0), maIndexWest(0), maSumEast(0), maSumWest(0),
 maFilledEast(false), maFilledWest(false),
 medIndexEast(0), medIndexWest(0),
-medFilledEast(false), medFilledWest(false) {
+medFilledEast(false), medFilledWest(false) , _este(false), _oeste(false), _horizontal(false)
+{
 	init();
 }
 
@@ -29,8 +33,8 @@ void Panel::init() {
 	ADCSRA = (1 << ADEN) | (1 << ADPS2) | (1 << ADPS1); // prescaler 64
 
 	// Configurar pines de alarma y límite como entradas con pull-up
-	DDRB &= ~((1 << ALARMA_PIN) | (1 << LIMITE_PIN));
-	PORTB |= (1 << ALARMA_PIN) | (1 << LIMITE_PIN);
+	DDRB &= ~((1 << ALARMA_PIN) | (1 << LIMITE_PIN_E)| (1 << LIMITE_PIN_H)| (1 << LIMITE_PIN_W));
+	PORTB |= (1 << ALARMA_PIN) | (1 << LIMITE_PIN_E)| (1 << LIMITE_PIN_H)| (1 << LIMITE_PIN_W);
 
 	// Inicializar buffers de filtros
 	for (uint8_t i = 0; i < MA_WINDOW; i++) {
@@ -183,7 +187,7 @@ Direccion Panel::decidirDireccion() {
 		integral = 0.0;
 		prevError = 0.0;
 		pidOutput = 0.0;
-		return DIR_STOP;
+		return Direccion::Stop;
 	}
 
 	// 3. Cálculo PID con dt = 0.1 s (porque llamamos cada 100 ms)
@@ -205,30 +209,30 @@ Direccion Panel::decidirDireccion() {
 	pidOutput = output;
 
 	// 6. Retornar dirección
-	if (output > 0) return DIR_ESTE;
-	else if (output < 0) return DIR_OESTE;
-	else return DIR_STOP;
+	if (output > 0) return Direccion::Este;
+	else if (output < 0) return Direccion::Oeste;
+	else return Direccion::Stop;
 }
 
 // NUEVA FUNCIÓN: Aplica el control a los pines (llamar cada 1 ms)
 void Panel::aplicarControlMotor() {
 	// A. GESTIÓN DE DIRECCIÓN (PB6) - Relé electromecánico
-	int currentSign = 0;
-	if (pidOutput > 2.0) currentSign = 1;       // ESTE
-	else if (pidOutput < -2.0) currentSign = -1; // OESTE
+	Direccion currentDir = Direccion::Stop;
+	if (pidOutput > 2.0)       currentDir = Direccion::Este;   // ESTE
+	else if (pidOutput < -2.0) currentDir = Direccion::Oeste;  // OESTE
 
-	// Solo cambiamos si el signo cambia y no estamos en zona muerta
-	if (currentSign != 0 && currentSign != lastDirectionSign) {
-		if (currentSign > 0) {
-			PORTB &= ~(1 << PB6);  // ESTE -> PB6=0
+	// Solo cambiamos si salimos de la zona muerta y la dirección cambió
+	if (currentDir != Direccion::Stop && currentDir != lastDirection) {
+		if (currentDir == Direccion::Este) {
+			PORTB &= ~(1 << PB6);  // ESTE  -> PB6 = 0
 			} else {
-			PORTB |= (1 << PB6);   // OESTE -> PB6=1
+			PORTB |=  (1 << PB6);  // OESTE -> PB6 = 1
 		}
-		lastDirectionSign = currentSign;
+		lastDirection = currentDir;
 
 		// Debug: cambio de dirección (usando tu DebugSerial)
 		//debug.print("\r\n[CAMBIO DIR] -> ");
-		//debug.println(currentSign > 0 ? "ESTE" : "OESTE");
+		//debug.println(currentDir == Direccion::Este ? "ESTE" : "OESTE");
 	}
 
 	// B. GESTIÓN DE VELOCIDAD (PB7) - PWM por software (Relé sólido)
@@ -248,7 +252,7 @@ void Panel::aplicarControlMotor() {
 		PORTB &= ~(1 << PB7);  // Apagar motor
 		} else {
 		if (currentTime < onTime) {
-			PORTB |= (1 << PB7);   // Encender
+			PORTB |=  (1 << PB7);  // Encender
 			} else {
 			PORTB &= ~(1 << PB7);  // Apagar
 		}
@@ -269,12 +273,22 @@ bool Panel::isAlarm() const {
 	return (PINB & (1 << ALARMA_PIN)) != 0;
 }
 
-bool Panel::isLimit() const {
-	return (PINB & (1 << LIMITE_PIN)) == 0;
+void Panel::update() {
+	// Lectura activa en bajo: 0 = límite alcanzado
+	_este       = (PINC & (1 << LIMITE_PIN_E)) == 0;
+	_horizontal = (PINC & (1 << LIMITE_PIN_H)) == 0;
+	_oeste      = (PINC & (1 << LIMITE_PIN_W)) == 0;
+}
+
+Limite Panel::limiteActivo() const {
+	if (_este)       return Limite::Este;
+	if (_oeste)      return Limite::Oeste;
+	if (_horizontal) return Limite::Horizontal;
+	return Limite::Ninguno;
 }
 
 const char* Panel::getStatusMessage() const {
 	if (isAlarm()) return "ALARMA";
-	if (isLimit()) return "LIMITE";
+	//if (limiteActivo()) return "LIMITE";
 	return "OK";
 }

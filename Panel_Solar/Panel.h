@@ -5,16 +5,35 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+
+
+
 // Enumeración de dirección (válida en C y C++)
-enum Direccion {
-	DIR_STOP = 0,
-	DIR_ESTE = 1,
-	DIR_OESTE = -1
+enum class Direccion : int8_t {
+	Stop  =  0,
+	Este  =  1,
+	Oeste = -1
+};
+enum class Limite {
+	Ninguno,
+	Este,
+	Oeste,
+	Horizontal
 };
 
 class Panel {
 	public:
 	Panel();
+	void update();
+	// Consultas rápidas sobre el estado ya leído
+	bool limiteEste()       const { return _este; }
+	bool limiteOeste()      const { return _oeste; }
+	bool limiteHorizontal() const { return _horizontal; }
+	bool algunLimite()      const { return _este || _oeste || _horizontal; }
+
+	// Devuelve el límite "activo" con la prioridad que definas
+	Limite limiteActivo() const;
+	
 	void init();
 	void initTimerMillis();
 	void leerSensores();
@@ -39,10 +58,14 @@ class Panel {
 
 	// Alarmas y límites
 	bool isAlarm() const;
-	bool isLimit() const;
+	//bool isLimit() const;
 	const char* getStatusMessage() const;
 
 	private:
+	//limites
+	bool _este;
+	bool _oeste;
+	bool _horizontal;
 	// Valores filtrados
 	float eastFiltered;
 	float westFiltered;
@@ -58,8 +81,7 @@ class Panel {
 	float currentError;
 
 	// Control de dirección (para proteger relé PB6)
-	int lastDirectionSign; // 1=ESTE, -1=OESTE, 0=STOP
-
+	Direccion lastDirection = Direccion::Stop;
 	// Constantes de tiempo
 	static const uint32_t PWM_PERIOD_MS = 200; // Período de 200ms para PWM
 

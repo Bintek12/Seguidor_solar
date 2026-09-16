@@ -3,7 +3,8 @@
 #include "Config.h"
 #include <avr/io.h>
 #include <avr/wdt.h>
-#include "Modbus_local.h"
+//#include "Modbus_local.h"
+#include "MODBUS.h"
 #define F_CPU (8000000UL)
 #include <util/delay.h>
 #include "Motor.h"
@@ -85,14 +86,15 @@ int main() {
 	debug.println("*** SEGUIDOR SOLAR INICIADO ***");
     //uint32_t lastPID = 0;
     uint32_t lastMotor = 0;
-	//Modbus_Init();
 	usart.dirRs485 = DIR_RS485;     
 	sei(); // habilita interrupciones globales
 	
 	while (1) {
 		
 		// 1. Lee los LDRs y actualiza eastFiltered / westFiltered (tu código existente)
-		panel.leerSensores();                             
+		panel.leerSensores();  
+		// 2. refresca el estado de los limites 
+		panel.update();                            
 		
 		// Verificar alarma (prioridad máxima)
 		if (panel.isAlarm()) {
@@ -101,15 +103,28 @@ int main() {
 			_delay_ms(500);
 			continue;
 		}
+		
+		if (panel.limiteEste()) {
+			motor.stop(); // detener motor hacia el este
+		}
+		if (panel.limiteOeste()) {
+			motor.stop(); // detener motor hacia el oeste
+		}
+		if (panel.limiteHorizontal()) {
+			// detener motor de subida/bajada
+		}
+
 
 		// Verificar límite de movimiento
-		if (panel.isLimit()) {
-			motor.stop();
-			debug.println("LÍMITE ALCANZADO - Motor detenido");
-			_delay_ms(100);
-			continue;
+		switch (panel.limiteActivo()) {
+			case Limite::Este:       motor.stop(); break;
+			case Limite::Oeste:      motor.stop(); break;
+			case Limite::Horizontal: /* ... */ break;
+			case Limite::Ninguno:    /* ... */ break;
+			//debug.println("LÍMITE ALCANZADO - Motor detenido");
 		}
-		// 2. Cada 100ms (por ejemplo), llama a la decisión del PID
+			
+		// 3. Cada 100ms (por ejemplo), llama a la decisión del PID
 		static unsigned long lastPID = 0;
 		if (getMillis() - lastPID >= 100) { // 100ms = dt=0.1
 			lastPID = getMillis();
@@ -154,10 +169,10 @@ int main() {
 			debug.println((PORTB & (1 << PB7)) ? "ON" : "OFF");
 			*/
 		}   // end if (getMillis() 
-		Modbus_Update_Registers(); // refresca datos de sensores
+		//Modbus_Update_Registers(); // refresca datos de sensores
 		
 		if (flags.datos_listos){ // atiende peticiones Modbus
-		   Modbus_Service();  
+		   //Modbus_Service();  
 		   PORTD ^=(1<<PD3);//solo para probar
 		   flags.datos_listos = false;
 		   usart.rx_index = 0;  
