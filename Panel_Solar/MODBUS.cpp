@@ -1,719 +1,92 @@
-#include <avr/interrupt.h>
-#include "MODBUS.h"
-#include <avr/io.h>
+﻿#include "MODBUS.h"
+#include "MODBUS_port.h"
+#include "nanoMODBUS.h"   // ajusta si tu header se llama distinto
 
+// -------------------- Estado interno --------------------
+static nmbs_t   nmbs;
+static Panel*   panel_ref = nullptr;
 
-#define RX_BUFFER_SIZE 64
+// -------------------- Helpers de conversión --------------------
+static inline uint16_t to_u16(float v)        { return (uint16_t)(v + 0.5f); }
+static inline uint16_t to_i16_x100(float v)   { return (uint16_t)(int16_t)(v * 100.0f); }
+static inline uint16_t to_i16_x10 (float v)   { return (uint16_t)(int16_t)(v * 10.0f);  }
 
-//volatile uint8_t RX_buffer[RX_BUFFER_SIZE];
-//unsigned char cnt;
-volatile uint8_t RXC_bit = 0;
+// -------------------- Lectura de registros --------------------
+static uint16_t leer_registro(uint16_t addr) {
+	switch (addr) {
+		case REG_ESTE_FILTRADO:
+		return to_u16(panel_ref->getEastFiltered());
 
-// ISR de recepci�n UART0
-/*
-ISR(USART_RX_vect){
-		uint8_t data = UDR0;            // Leer dato recibido
-		RX_buffer[cnt++] = data;        // Guardar en buffer
-		RXC_bit = 1;                    // Flag de recepci�n
+		case REG_OESTE_FILTRADO:
+		return to_u16(panel_ref->getWestFiltered());
 
-		if (cnt >= RX_BUFFER_SIZE)
-		cnt = 0;                    // Evitar desbordamiento
+		case REG_ERROR_PID_X100:
+		return to_i16_x100(panel_ref->getCurrentError());
+
+		case REG_SALIDA_PID_X100:
+		return to_i16_x100(panel_ref->getPIDOutput());
+
+		case REG_TEMPERATURA_X10:
+		return to_i16_x10(panel_ref->readTemperature(6));  // ADC6
+
+		case REG_ESTADO_LIMITES: {
+			uint16_t b = 0;
+			if (panel_ref->limiteEste())       b |= (1 << 0);
+			if (panel_ref->limiteOeste())      b |= (1 << 1);
+			if (panel_ref->limiteHorizontal()) b |= (1 << 2);
+			return b;
+		}
+
+		case REG_ALARMA:
+		return panel_ref->isAlarm() ? 1 : 0;
+
+		case REG_STATUS_MSG:
+		return 0;   // reservado; puedes mapear getStatusMessage() a un código
+
+		default:
+		return 0;
 	}
-*/
-void flush_RX_buffer(void){
-    signed char i = (RX_buffer_length - 1);
-
-    while(i > -1)    {
-        RX_buffer[i--] = 0x00;
-    };
-    cnt = 0x00;
 }
 
-
-void flush_TX_buffer(void){
-    signed char i = (TX_buffer_length - 1);
-
-    while(i > -1)    {
-        TX_buffer[i--] = 0x00;
-    };
-}
-
-
-unsigned int MODBUS_RTU_CRC16(unsigned char *data_input, unsigned char data_length){
-    unsigned char n = 0x08;
-    unsigned char s = 0x00;
-    unsigned int CRC_word = 0xFFFF;
-
-    for(s = 0x00; s < data_length; s++)    {
-        CRC_word ^= ((unsigned int)data_input[s]);
-
-        n = 8;
-        
-        while(n > 0)        {
-            if((CRC_word & 0x0001) == 0)            {
-              CRC_word >>= 1;
-            }
-
-            else {
-              CRC_word >>= 1;
-              CRC_word ^= 0xA001;
-            }
-
-            n--;
-      }
-    }
-
-    return CRC_word;
-}
-
-
-void MODBUS_receive_task(void){
-     int error_flag;
-
-     unsigned char low_byte = 0x00;
-     unsigned char high_byte = 0x00;
-
-     unsigned int temp1 = 0x0000;
-     unsigned int temp2 = 0x0000;
-     unsigned int temp3 = 0x0000;
-     unsigned int temp4 = 0x0000;
-     unsigned int temp5 = 0x0000;
-     unsigned int temp6 = 0x0000;
-     unsigned int temp7 = 0x0000;
-
-     static unsigned char data_array[0x08] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-
-     error_flag = 0;
-
-     if(RX_buffer[id_byte] == own_ID)     {
-         switch(RX_buffer[function_code_byte])         {
-             case FC_read_coils:
-             {
-                 temp1 = make_word(RX_buffer[location_start_high_byte], RX_buffer[location_start_low_byte]);
-
-                 if((temp1 >= addr_coil_start) && (temp1 <= addr_coil_end))  {
-                     temp2 = make_word(RX_buffer[location_end_high_byte], RX_buffer[location_end_low_byte]);
-
-                     if((temp2 <= no_of_coils) && (temp2 + temp1 - 1) <= addr_coil_end) {
-                         temp3 = make_word(RX_buffer[CRC_low_byte], RX_buffer[CRC_high_byte]);
-                         temp4 = MODBUS_RTU_CRC16(RX_buffer, 6);
-
-                         if(temp4 == temp3)  {
-                             temp4 = 0x0000;
-                             temp5 = ((temp1 - addr_coil_start) + temp2 - 1);
-
-                             while(temp2) {
-                                 temp4 <<= 1;
-                                 temp4 |= coils[temp5];
-                                 temp5--;
-                                 temp2--;
-                             };
-
-                             data_array[0] = 0x01;
-                             data_array[1] = ((unsigned char)temp4);
-
-                             MODBUS_send_task(FC_read_coils, 2, data_array);
-                         }
-
-                         else {
-                             error_flag = 1;
-                         }
-                     }
-
-                     else {
-                         error_flag = 1;
-                     }
-                 }
-
-                 else  {
-                     error_flag = 1;
-                 }
-
-                 switch(error_flag)
-                 {
-                     case 1:
-                     {
-                       data_array[0] = 0x02;
-                       MODBUS_send_task((FC_read_coils | 0x80), 1, data_array);
-                       break;
-                     }
-                     default:
-                     {
-                       break;
-                     }
-                 }
-
-                 break;
-             }
-
-             case FC_read_discrete_inputs:
-             {
-                 temp1 = make_word(RX_buffer[location_start_high_byte], RX_buffer[location_start_low_byte]);
-
-                 if((temp1 >= addr_input_start) && (temp1 <= addr_input_end))  {
-                     temp2 = make_word(RX_buffer[location_end_high_byte], RX_buffer[location_end_low_byte]);
-
-                     if((temp2 <= no_of_inputs) && (temp2 + temp1 - 1) <= addr_input_end)  {
-                         temp3 = make_word(RX_buffer[CRC_low_byte], RX_buffer[CRC_high_byte]);
-                         temp4 = MODBUS_RTU_CRC16(RX_buffer, 6);
-
-                         if(temp4 == temp3)  {
-                             temp4 = 0x0000;
-                             temp5 = ((temp1 - addr_input_start) + temp2 - 1);
-
-                             while(temp2) {
-                                 temp4 <<= 1;
-                                 temp4 |= discrete_inputs[temp5];
-                                 temp5--;
-                                 temp2--;
-                             };
-
-                             data_array[0] = 0x01;
-                             data_array[1] = ((unsigned char)temp4);
-
-                             MODBUS_send_task(FC_read_discrete_inputs, 2, data_array);
-                          }
-
-                          else
-                          {
-                              error_flag = 1;
-                          }
-                     }
-
-                     else
-                     {
-                         error_flag = 1;
-                     }
-                 }
-
-                 else
-                 {
-                     error_flag = 1;
-                 }
-
-                 switch(error_flag) {
-                     case 1:
-                     {
-                       data_array[0] = 0x02;
-                       MODBUS_send_task((FC_read_discrete_inputs | 0x80), 1, data_array);
-                       break;
-                     }
-                     default:
-                     {
-                       break;
-                     }
-                 }
-
-                 break;
-             }
-
-             case FC_read_holding_registers:
-             {
-                 temp1 = make_word(RX_buffer[location_start_high_byte], RX_buffer[location_start_low_byte]);
-
-                 if((temp1 >= addr_holding_reg_start) && (temp1 <= addr_holding_reg_end))   {
-                     temp2 = make_word(RX_buffer[location_end_high_byte], RX_buffer[location_end_low_byte]);
-
-                     if((temp2 <= no_of_holding_regs) && (temp2 + temp1 - 1) <= addr_holding_reg_end)
-                     {
-                         temp3 = make_word(RX_buffer[CRC_low_byte], RX_buffer[CRC_high_byte]);
-                         temp4 = MODBUS_RTU_CRC16(RX_buffer, 6);
-
-                         if(temp4 == temp3)
-                         {
-                             data_array[0] = temp2;
-                             data_array[0] <<= 1;
-
-                             if(temp2 > 1)
-                             {
-
-                                 for(temp3 = (temp1 - addr_holding_reg_start); temp3 < temp2; temp3++)
-                                 {
-                                     get_HB_LB(holding_registers[((temp1 - addr_holding_reg_start) + temp3)], &high_byte, &low_byte);
-                                     data_array[1 + temp3 + temp3] = high_byte;
-                                     data_array[2 + temp3 + temp3] = low_byte;
-                                 }
-                             }
-
-                             else
-                             {
-                                     get_HB_LB(holding_registers[(temp1 - addr_holding_reg_start)], &high_byte, &low_byte);
-                                     data_array[1] = high_byte;
-                                     data_array[2] = low_byte;
-                             }
-
-                             MODBUS_send_task(FC_read_holding_registers, ((temp2 << 1) + 1), data_array);
-                         }
-
-                         else
-                         {
-                             error_flag = 1;
-                         }
-                     }
-
-                     else
-                     {
-                         error_flag = 1;
-                     }
-                 }
-
-                 else
-                 {
-                     error_flag = 1;
-                 }
-
-                 switch(error_flag)
-                 {
-                     case 1:
-                     {
-                       data_array[0] = 0x02;
-                       MODBUS_send_task((FC_read_holding_registers | 0x80), 1, data_array);
-                       break;
-                     }
-                     default:
-                     {
-                       break;
-                     }
-                 }
-
-                 break;
-             }
-
-             case FC_read_input_registers:
-             {
-                 temp1 = make_word(RX_buffer[location_start_high_byte], RX_buffer[location_start_low_byte]);
-
-                 if((temp1 >= addr_input_reg_start) && (temp1 <= addr_input_reg_end))
-                 {
-                     temp2 = make_word(RX_buffer[location_end_high_byte], RX_buffer[location_end_low_byte]);
-
-                     if((temp2 <= no_of_input_regs) && (temp2 + temp1 - 1) <= addr_input_reg_end)
-                     {
-                         temp3 = make_word(RX_buffer[CRC_low_byte], RX_buffer[CRC_high_byte]);
-                         temp4 = MODBUS_RTU_CRC16((unsigned char *)RX_buffer, 6);
-
-                         if(temp4 == temp3)
-                         {
-                             data_array[0] = temp2;
-                             data_array[0] <<= 1;
-
-                             if(temp2 > 1)
-                             {
-
-                                 for(temp3 = (temp1 - addr_input_reg_start); temp3 < temp2; temp3++)
-                                 {
-                                     get_HB_LB(input_registers[((temp1 - addr_input_reg_start) + temp3)], &high_byte, &low_byte);
-                                     data_array[1 + temp3 + temp3] = high_byte;
-                                     data_array[2 + temp3 + temp3] = low_byte;
-                                 }
-                             }
-
-                             else
-                             {
-                                     get_HB_LB(input_registers[(temp1 - addr_input_reg_start)], &high_byte, &low_byte);
-                                     data_array[1] = high_byte;
-                                     data_array[2] = low_byte;
-                             }
-
-                             MODBUS_send_task(FC_read_input_registers, ((temp2 << 1) + 1), data_array);
-                         }
-
-                         else
-                         {
-                             error_flag = 1;
-                         }
-                     }
-
-                     else
-                     {
-                         error_flag = 1;
-                     }
-                 }
-
-                 else
-                 {
-                     error_flag = 1;
-                 }
-
-                 switch(error_flag)
-                 {
-                     case 1:
-                     {
-                       data_array[0] = 0x02;
-                       MODBUS_send_task((FC_read_input_registers | 0x80), 1, data_array);
-                       break;
-                     }
-                     default:
-                     {
-                       break;
-                     }
-                 }
-
-                 break;
-             }
-
-             case FC_write_single_coil:
-             {
-                 temp2 = make_word(RX_buffer[location_start_high_byte], RX_buffer[location_start_low_byte]);
-
-                 if((temp2 >= addr_coil_start) && (temp2 <= addr_coil_end))
-                 {
-                      temp1 = make_word(RX_buffer[CRC_low_byte], RX_buffer[CRC_high_byte]);
-                      temp3 = MODBUS_RTU_CRC16(RX_buffer, 6);
-
-                      if(temp1 == temp3)
-                      {
-                          temp1 = make_word(RX_buffer[location_end_high_byte], RX_buffer[location_end_low_byte]);
-
-                          if(temp1 == coil_ON)
-                          {
-                              coils[temp2] = ON;
-                          }
-
-                          else if(temp1 == coil_OFF)
-                          {
-                              coils[temp2] = coil_OFF;
-                          }
-
-                          data_array[0] = RX_buffer[location_start_high_byte];
-                          data_array[1] = RX_buffer[location_start_low_byte];
-                          data_array[2] = RX_buffer[location_end_high_byte];
-                          data_array[3] = RX_buffer[location_end_low_byte];
-
-                          MODBUS_send_task(FC_write_single_coil, 4 , data_array);
-                      }
-
-                      else
-                      {
-                          error_flag = 1;
-                      }
-                 }
-
-                 else
-                 {
-                     error_flag = 1;
-                 }
-
-                 switch(error_flag)
-                 {
-                     case 1:
-                     {
-                       data_array[0] = 0x02;
-                       MODBUS_send_task((FC_write_single_coil | 0x80), 1, data_array);
-                       break;
-                     }
-                     default:
-                     {
-                       break;
-                     }
-                 }
-
-                 break;
-             }
-
-             case FC_write_single_register:
-             {
-                 temp1 = make_word(RX_buffer[location_start_high_byte], RX_buffer[location_start_low_byte]);
-
-                 if((temp1 >= addr_holding_reg_start) && (temp1 <= addr_holding_reg_end))
-                 {
-                     temp3 = make_word(RX_buffer[CRC_low_byte], RX_buffer[CRC_high_byte]);
-                     temp4 = MODBUS_RTU_CRC16(RX_buffer, 6);
-
-                     if(temp4 == temp3)
-                     {
-                         temp2 = make_word(RX_buffer[location_end_high_byte], RX_buffer[location_end_low_byte]);
-                         holding_registers[temp1 - addr_holding_reg_start] = temp2;
-
-                         data_array[0] = RX_buffer[location_start_high_byte];
-                         data_array[1] = RX_buffer[location_start_low_byte];
-                         data_array[2] = RX_buffer[location_end_high_byte];
-                         data_array[3] = RX_buffer[location_end_low_byte];
-
-                         MODBUS_send_task(FC_write_single_register, 4 , data_array);
-                     }
-
-                     else
-                     {
-                         error_flag = 1;
-                     }
-                 }
-
-                 else
-                 {
-                     error_flag = 1;
-                 }
-
-                 switch(error_flag)
-                 {
-                     case 1:
-                     {
-                       data_array[0] = 0x02;
-                       MODBUS_send_task((FC_write_single_register | 0x80), 1, data_array);
-                       break;
-                     }
-                     default:
-                     {
-                       break;
-                     }
-                 }
-
-                 break;
-             }
-
-             case FC_write_multiple_coils:
-             {
-                 temp1 = make_word(RX_buffer[location_start_high_byte], RX_buffer[location_start_low_byte]);
-
-                 if((temp1 >= addr_coil_start) && (temp1 <= addr_coil_end))
-                 {
-                     temp2 = make_word(RX_buffer[location_end_high_byte], RX_buffer[location_end_low_byte]);
-                     temp3 = (temp2 + temp1 - 1);
-
-                     if((temp2 <= no_of_coils) && (temp3 <= addr_coil_end))
-                     {
-                         temp3 = RX_buffer[byte_size_byte];
-
-                         if((temp2 > 0) && (temp2 <= 8))
-                         {
-                             temp4 = 1;
-                         }
-                         else if((temp2 > 8) && (temp2 <= 16))
-                         {
-                             temp4 = 2;
-                         }
-
-                         if(temp3 == temp4)
-                         {
-                             temp7 = (mandatory_bytes_to_read + temp4);
-
-                             temp5 = make_word(RX_buffer[(1 + temp7)], RX_buffer[temp7]);
-                             temp6 = MODBUS_RTU_CRC16(RX_buffer, temp7);
-
-                             if(temp6 == temp5)
-                             {
-                                 if(temp3 == 1)
-                                 {
-                                     temp4 = RX_buffer[(temp7 - 1)];
-                                     temp5 = (temp1 - addr_coil_start);
-
-                                     if(temp2 > 1)
-                                     {
-                                         for(temp6 = temp5; temp6 < (temp2 + temp5); temp6++)
-                                         {
-                                             coils[temp6] = (temp4 & 0x01);
-                                             temp4 >>= 1;
-                                         }
-                                     }
-
-                                     else
-                                     {
-                                         coils[temp5] = temp4;
-                                     }
-                                 }
-
-                                 else
-                                 {
-                                     temp4 = make_word(RX_buffer[(temp7 - 1)], RX_buffer[temp7]);
-
-                                     for(temp6 = temp5; temp6 < (temp2 + temp5); temp6++)
-                                     {
-                                         coils[temp6] = (temp4 & 0x01);
-                                         temp4 >>= 1;
-                                     }
-                                 }
-
-                                 data_array[0] = RX_buffer[location_start_high_byte];
-                                 data_array[1] = RX_buffer[location_start_low_byte];
-                                 data_array[2] = RX_buffer[location_end_high_byte];
-                                 data_array[3] = RX_buffer[location_end_low_byte];
-
-                                 MODBUS_send_task(FC_write_multiple_coils, 4 , data_array);
-                             }
-
-                             else
-                             {
-                                 error_flag = 1;
-                             }
-                          }
-
-                          else
-                          {
-                              error_flag = 1;
-                          }
-                     }
-
-                     else
-                     {
-                         error_flag = 1;
-                     }
-                 }
-
-                 else
-                 {
-                     error_flag = 1;
-                 }
-
-                 switch(error_flag)
-                 {
-                     case 1:
-                     {
-                       data_array[0] = 0x02;
-                       MODBUS_send_task((FC_write_multiple_coils | 0x80), 1, data_array);
-                       break;
-                     }
-
-                     default:
-                     {
-                       break;
-                     }
-                 }
-
-                 break;
-             }
-
-             case FC_write_multiple_registers:
-             {
-                 temp1 = make_word(RX_buffer[location_start_high_byte], RX_buffer[location_start_low_byte]);
-
-                 if((temp1 >= addr_holding_reg_start) && (temp1 <= addr_holding_reg_end))
-                 {
-                     temp2 = make_word(RX_buffer[location_end_high_byte], RX_buffer[location_end_low_byte]);
-                     temp3 = (temp2 + temp1 - 1);
-
-                     if((temp2 <= no_of_holding_regs) && (temp3 <= addr_holding_reg_end))
-                     {
-                         temp3 = RX_buffer[byte_size_byte];
-                         temp4 = (temp2 << 1);
-
-                         if(temp3 == temp4)
-                         {
-                             temp7 = (mandatory_bytes_to_read + temp3);
-
-                             temp5 = make_word(RX_buffer[(1 + temp7)], RX_buffer[temp7]);
-                             temp6 = MODBUS_RTU_CRC16(RX_buffer, temp7);
-
-                             if(temp6 == temp5)
-                             {
-                                 temp5 = (temp1 - addr_holding_reg_start);
-                                 temp3 = mandatory_bytes_to_read;
-
-                                 if(temp2 == 1)
-                                 {
-                                     holding_registers[temp5] = make_word(RX_buffer[temp3], RX_buffer[(1 + temp3)]);
-                                 }
-
-                                 else {
-                                     for(temp6 = temp5; temp6 < (temp2 + temp5); temp6++)                                     {
-                                         holding_registers[temp6] = make_word(RX_buffer[temp3], RX_buffer[(1 + temp3)]);
-                                         temp3 += 2;
-                                     }
-                                 }
-
-                                 data_array[0] = RX_buffer[location_start_high_byte];
-                                 data_array[1] = RX_buffer[location_start_low_byte];
-                                 data_array[2] = RX_buffer[location_end_high_byte];
-                                 data_array[3] = RX_buffer[location_end_low_byte];
-
-                                 MODBUS_send_task(FC_write_multiple_registers, 4 , data_array);
-                             }
-
-                             else  {
-                                 error_flag = 1;
-                             }
-                          }
-
-                          else {
-                              error_flag = 1;
-                          }
-                     }
-
-                     else
-                     {
-                         error_flag = 1;
-                     }
-                 }
-
-                 else
-                 {
-                     error_flag = 1;
-                 }
-
-                 switch(error_flag)
-                 {
-                     case 1:
-                     {
-                       data_array[0] = 0x02;
-                       MODBUS_send_task((FC_write_multiple_registers | 0x80), 1, data_array);
-                       break;
-                     }
-
-                     default:
-                     {
-                       break;
-                     }
-                 }
-
-                 break;
-             }
-             
-             default:
-             {
-                 break;
-             }
-         }
-         
-     }
-
-     flush_RX_buffer();
-}
-
-
-void MODBUS_send_task(unsigned char function_code, unsigned char data_length, unsigned char *values){
-	unsigned char hb = 0x00;
-	unsigned char lb = 0x00;
-	unsigned char byte_count = 0x00;
-
-	flush_TX_buffer();
-
-	TX_buffer[id_byte] = own_ID;
-	TX_buffer[function_code_byte] = function_code;
-
-	for(byte_count = 0; byte_count < data_length; byte_count++)	{
-		TX_buffer[2 + byte_count] = values[byte_count];
+// -------------------- Callback de nanoMODBUS --------------------
+static nmbs_error on_read_holding_registers(uint16_t address, uint16_t quantity,
+uint16_t* regs_out, uint8_t unit_id,
+void* arg) {
+	(void)unit_id;   // no lo usamos: solo hay un esclavo
+	(void)arg;
+	if (address + quantity > REG_COUNT) {
+		return NMBS_EXCEPTION_ILLEGAL_DATA_ADDRESS;
 	}
-	get_HB_LB(MODBUS_RTU_CRC16(TX_buffer, (data_length + 2)), &hb, &lb);
-
-	TX_buffer[2 + data_length] = lb;
-	TX_buffer[3 + data_length] = hb;
-
-	SETBIT(PORTD,DE) ; //transmit enable
-	UCSR0B = (1<<TXEN0); // Enable  transmitter
-
-	for(byte_count = 0; byte_count < (6 + data_length); byte_count++){
-		while ( !( UCSR0A & (1<<UDRE0)) );
-		UDR0 = TX_buffer[byte_count];
+	for (uint16_t i = 0; i < quantity; i++) {
+		regs_out[i] = leer_registro(address + i);
 	}
-	while (!( UCSR0A & (1<<UDRE0)));
-	UCSR0A |= (1<<TXC0); //flag clear
-
-	CLEARBIT(PORTB,DE);
+	return NMBS_ERROR_NONE;
 }
 
-unsigned int make_word(unsigned char HB, unsigned char LB)
-{
-	unsigned int tmp = 0;
+// -------------------- API pública --------------------
+void modbus_init(Panel* panel, uint32_t baudios) {
+	panel_ref = panel;
 
-	tmp = HB;
-	tmp <<= 8;
-	tmp |= LB;
+	modbus_port_init(baudios);
 
-	return tmp;
+	// Configurar transporte RTU con nuestros callbacks de bajo nivel
+	nmbs_platform_conf platform_conf;
+	nmbs_platform_conf_create(&platform_conf);
+	platform_conf.transport = NMBS_TRANSPORT_RTU;
+	platform_conf.read      = modbus_port_read;
+	platform_conf.write     = modbus_port_write;
+	platform_conf.arg       = nullptr;
+
+	// Configurar callbacks de datos
+	nmbs_callbacks callbacks;
+	nmbs_callbacks_create(&callbacks);
+	callbacks.read_holding_registers = on_read_holding_registers;
+	// (los demás quedan nullptr → nanoMODBUS devuelve excepción si los piden)
+
+	// Crear el servidor (esclavo)
+	nmbs_server_create(&nmbs, MODBUS_SLAVE_ID, &platform_conf, &callbacks);
 }
 
-
-void get_HB_LB(unsigned int value, unsigned char *HB, unsigned char *LB)
-{
-	*LB = (value & 0x00FF);
-	*HB = ((value & 0xFF00) >> 0x08);
+void modbus_poll(void) {
+	nmbs_server_poll(&nmbs);
 }

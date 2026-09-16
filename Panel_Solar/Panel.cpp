@@ -16,13 +16,13 @@ inline int8_t signoDe(Direccion d) {
 }
 
 Panel::Panel()
-: eastFiltered(0), westFiltered(0), error(0), stopThreshold(5.0f),
+: _este(false), _oeste(false), _horizontal(false), eastFiltered(0), westFiltered(0), error(0), stopThreshold(5.0f),
 Kp(2.0f), Ki(0.5f), Kd(0.1f),
 integral(0), prevError(0), maxOutput(100.0f),// minOutput(-100.0f),
 maIndexEast(0), maIndexWest(0), maSumEast(0), maSumWest(0),
 maFilledEast(false), maFilledWest(false),
 medIndexEast(0), medIndexWest(0),
-medFilledEast(false), medFilledWest(false) , _este(false), _oeste(false), _horizontal(false)
+medFilledEast(false), medFilledWest(false) 
 {
 	init();
 }

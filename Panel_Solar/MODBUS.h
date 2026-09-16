@@ -1,97 +1,32 @@
-#ifndef MODBUS_H
-#define MODBUS_H
+#ifndef PANEL_SOLAR_MODBUS_H
+#define PANEL_SOLAR_MODBUS_H
 
+#include <stdint.h>
+#include <stdbool.h>
+#include "Panel.h"
 
-#include <avr/io.h>
-#define own_ID                                  0x46  //70
+// ID de esclavo MODBUS (0x47 = 71 decimal)
+#define MODBUS_SLAVE_ID     0x47
+#define MODBUS_BAUDIOS      38400UL
+#define MODBUS_BYTE_TIMEOUT 5   // ms de silencio por byte
 
-#define FC_read_coils                           0x01
-#define FC_read_discrete_inputs                 0x02
-#define FC_read_holding_registers               0x03
-#define FC_read_input_registers                 0x04
-#define FC_write_single_coil                    0x05
-#define FC_write_single_register                0x06
-#define FC_write_multiple_coils                 0x0F
-#define FC_write_multiple_registers             0x10
+// Mapa de registros (holding registers, FC 0x03)
+enum RegsModbus : uint16_t {
+	REG_ESTE_FILTRADO   = 0,  // uint16, 0..1023  - lectura ADC Este filtrada
+	REG_OESTE_FILTRADO  = 1,  // uint16, 0..1023  - lectura ADC Oeste filtrada
+	REG_ERROR_PID_X100  = 2,  // int16, error * 100  (con signo)
+	REG_SALIDA_PID_X100 = 3,  // int16, pidOutput * 100 (con signo)
+	REG_TEMPERATURA_X10 = 4,  // int16, °C * 10 (con signo)
+	REG_ESTADO_LIMITES  = 5,  // bitfield: b0=Este, b1=Oeste, b2=Horizontal
+	REG_ALARMA          = 6,  // 0 = OK, 1 = alarma activa
+	REG_STATUS_MSG      = 7,  // código de estado (entero)
+	REG_COUNT           = 8   // total de registros
+};
 
-#define coil_1                                  0
-#define coil_2                                  1
-#define coil_3                                  2
-#define coil_4                                  3
+// Inicializa la capa MODBUS. Debe llamarse una vez tras panel.init().
+void modbus_init(Panel* panel, uint32_t baudios);
 
-#define discrete_input_1                        100
-#define discrete_input_2                        101
-#define discrete_input_3                        102
-#define discrete_input_4                        103
-
-#define input_register_1                        300
-#define input_register_2                        301
-
-#define holding_register_1                      400
-#define holding_register_2                      401
-
-#define no_of_coils                             4
-#define no_of_inputs                            4
-#define no_of_input_regs                        2
-#define no_of_holding_regs                      2
-
-#define addr_coil_start                         coil_1
-#define addr_coil_end                           coil_4
-
-#define addr_input_start                        discrete_input_1
-#define addr_input_end                          discrete_input_4
-
-#define addr_input_reg_start                    input_register_1
-#define addr_input_reg_end                      input_register_2
-
-#define addr_holding_reg_start                  holding_register_1
-#define addr_holding_reg_end                    holding_register_2
-
-#define id_byte                                 0
-#define function_code_byte                      1
-#define byte_length_byte                        2
-
-#define location_start_high_byte                2
-#define location_start_low_byte                 3
-#define location_end_high_byte                  4
-#define location_end_low_byte                   5
-#define byte_size_byte                          6
-#define CRC_high_byte                           6
-#define CRC_low_byte                            7
-
-#define coil_ON                                 0xFF00
-#define coil_OFF                                0x0000
-
-#define ON                                    1
-#define OFF                                   0
-
-#define TX_buffer_length                        16
-#define RX_buffer_length                        16
-#define mandatory_bytes_to_read                 7
-#define fixed_no_of_bytes_to_read               5
-
-#define DE                                    PD3
-
-unsigned char cnt = 0x00;
-unsigned char TX_buffer[TX_buffer_length];
-unsigned char RX_buffer[RX_buffer_length];
-
-unsigned char coils[no_of_coils] = {0, 0, 0, 0};
-unsigned char discrete_inputs[no_of_inputs] = {0, 0, 0, 0};
-unsigned int input_registers[no_of_input_regs] = {0x0000, 0x0000};
-unsigned int holding_registers[no_of_holding_regs] = {0x0000, 0x0000};
-
-//definicion de macros:
-#define SETBIT(ADDRESS,BIT) (ADDRESS |= (1<<BIT))
-#define CLEARBIT(ADDRESS,BIT) (ADDRESS &=~(1<<BIT))
-
-
-void flush_RX_buffer(void);
-void flush_TX_buffer(void);
-unsigned int MODBUS_RTU_CRC16(unsigned char *data_input, unsigned char data_length);
-void MODBUS_receive_task(void);
-void MODBUS_send_task(unsigned char function_code, unsigned char data_length, unsigned char *values);
-unsigned int make_word(unsigned char HB, unsigned char LB);
-void get_HB_LB(unsigned int value, unsigned char *HB, unsigned char *LB);
+// Procesa peticiones pendientes. Llamar en cada iteración del loop().
+void modbus_poll(void);
 
 #endif

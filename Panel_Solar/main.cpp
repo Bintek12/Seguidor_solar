@@ -1,10 +1,10 @@
-
-
+/* #define NMBS_DEBUG  */  
+#include "MODBUS.h"
 #include "Config.h"
 #include <avr/io.h>
 #include <avr/wdt.h>
 //#include "Modbus_local.h"
-#include "MODBUS.h"
+
 #define F_CPU (8000000UL)
 #include <util/delay.h>
 #include "Motor.h"
@@ -18,61 +18,36 @@ struct USART usart;
 struct FLAGS flags; 
 
 // Variables globales de tiempo
-extern volatile uint32_t system_ms;
-
-//volatile uint8_t rx_buffer[MODBUS_BUFFER_SIZE];
-volatile uint8_t rx_index;
-
-ISR(USART_RX_vect){
-	unsigned char status;
-
-	status = UCSR0A; //requerido por el hardware (see Atmel datasheet)
-	usart.rx_buffer[usart.rx_index] = UDR0;
-	usart.rx_index++;
-
-	if(usart.rx_index >= RX_BUFFER_SIZE )	{
-		usart.rx_index = 0;
-		if(usart.rx_buffer[0] == usart.dirRs485)//dirRS485
-		flags.datos_listos = true;		
-	}
-	TCNT2 = 0;    // Reinicializa Timer de recepción
-	TCCR2B = 0x07;  // Arranca temporizador f = Ck/1024  = 15625 Hz
-	TIMSK2 |=  (1<<TOIE2);  // habilita interrupción counter2 ovf
-}
-
-/* Timer 2 overflow interrupt service routine
-Perro guardián de la comunicación serie */
-ISR(TIMER2_OVF_vect)
-{
-	TCNT2 = 0;    // Reinicializa Timer de recepción
-	TCCR2B = 0x00;  // detiene temporizador
-	TIMSK2 &= ~ (1<<TOIE2);  // desabilita interrupción counter ovf
-	usart.rx_index = 0; // Inicializa puntero de recepción
-}
-
-/*
-ISR(USART_RX_vect) {
-	uint8_t data = UDR0;                 // Leer byte recibido
-	if (rx_index < MODBUS_BUFFER_SIZE) {
-		rx_buffer[rx_index++] = data;    // Guardar en buffer
-		} else {
-		rx_index = 0;                    // Reinicio si desborda
-	}
-}
-
-*/
+//extern volatile uint32_t system_ms;
+volatile uint32_t system_ms = 0;  
 
 uint32_t getMillis();
 void initTimerMillis();
 void setupWatchdog();
 void Timer1_Init();
 
+Panel panel;   // instancia global como ya tienes
+
+
+// ISR que incrementa el contador
+ISR(TIMER1_COMPA_vect) {
+	system_ms++;
+}
+
+void setup() {
+	// ... tu inicialización actual ...
+	panel.init();
+	panel.initTimerMillis();
+	panel.initPID(2.5f, 0.1f, 0.5f, 255.0f, 5.0f);
+
+	modbus_init(&panel, MODBUS_BAUDIOS);   // <-- nuevo, después de panel.init()
+}
 
 int main() {
 	Motor motor;
 	Panel panel;
 	DebugSerial debug;
-    initTimerMillis();
+    //initTimerMillis();
 	setupWatchdog();
 	//chip_init();
 	ASSR=0x00;
@@ -90,11 +65,14 @@ int main() {
 	sei(); // habilita interrupciones globales
 	
 	while (1) {
+		// 1. refresca el estado de los limites 
+		panel.update();
+		// 3. Lee los LDRs y actualiza eastFiltered / westFiltered
+		panel.leerSensores();
 		
-		// 1. Lee los LDRs y actualiza eastFiltered / westFiltered (tu código existente)
-		panel.leerSensores();  
-		// 2. refresca el estado de los limites 
-		panel.update();                            
+		panel.aplicarControlMotor(); 
+		
+		modbus_poll();                    // <-- atiende peticiones RS-485
 		
 		// Verificar alarma (prioridad máxima)
 		if (panel.isAlarm()) {
@@ -171,12 +149,6 @@ int main() {
 		}   // end if (getMillis() 
 		//Modbus_Update_Registers(); // refresca datos de sensores
 		
-		if (flags.datos_listos){ // atiende peticiones Modbus
-		   //Modbus_Service();  
-		   PORTD ^=(1<<PD3);//solo para probar
-		   flags.datos_listos = false;
-		   usart.rx_index = 0;  
-		}      
 		// --- ALIMENTAR AL WATCHDOG ---
 		// Esta llamada reinicia el contador del WDT.
 		// Debe ejecutarse regularmente, al menos una vez cada 2 segundos (en este ejemplo).

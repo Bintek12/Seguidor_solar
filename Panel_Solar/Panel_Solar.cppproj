@@ -175,17 +175,19 @@
     </Compile>
     <Compile Include="MODBUS.cpp">
       <SubType>compile</SubType>
+      <Link>MODBUS.cpp</Link>
     </Compile>
     <Compile Include="MODBUS.h">
       <SubType>compile</SubType>
+      <Link>MODBUS.h</Link>
     </Compile>
-    <Compile Include="Modbus_local.cpp">
+    <Compile Include="MODBUS_port.cpp">
       <SubType>compile</SubType>
-      <Link>Modbus_local.cpp</Link>
+      <Link>MODBUS_port.cpp</Link>
     </Compile>
-    <Compile Include="Modbus_local.h">
+    <Compile Include="MODBUS_port.h">
       <SubType>compile</SubType>
-      <Link>Modbus_local.h</Link>
+      <Link>MODBUS_port.h</Link>
     </Compile>
     <Compile Include="motor.cpp">
       <SubType>compile</SubType>
@@ -194,6 +196,12 @@
     <Compile Include="motor.h">
       <SubType>compile</SubType>
       <Link>motor.h</Link>
+    </Compile>
+    <Compile Include="nanomodbus.c">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="nanomodbus.h">
+      <SubType>compile</SubType>
     </Compile>
     <Compile Include="Panel.cpp">
       <SubType>compile</SubType>
