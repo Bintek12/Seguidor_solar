@@ -22,9 +22,7 @@ struct FLAGS flags;
 volatile uint32_t system_ms = 0;  
 
 uint32_t getMillis();
-void initTimerMillis();
-void setupWatchdog();
-void Timer1_Init();
+
 
 Panel panel;   // instancia global como ya tienes
 
@@ -34,28 +32,27 @@ ISR(TIMER1_COMPA_vect) {
 	system_ms++;
 }
 
-void setup() {
-	// ... tu inicialización actual ...
-	panel.init();
-	panel.initTimerMillis();
-	panel.initPID(2.5f, 0.1f, 0.5f, 255.0f, 5.0f);
-
-	modbus_init(&panel, MODBUS_BAUDIOS);   // <-- nuevo, después de panel.init()
-}
 
 int main() {
 	Motor motor;
 	Panel panel;
 	DebugSerial debug;
-    //initTimerMillis();
+    initTimerMillis();
 	setupWatchdog();
-	//chip_init();
+	panel.init();
+	//panel.initTimerMillis();
+	panel.initPID(2.5f, 0.1f, 0.5f, 255.0f, 5.0f);
+
+	modbus_init(&panel, MODBUS_BAUDIOS);   // <-- nuevo, después de panel.init()
+	/*
+	chip_init();
 	ASSR=0x00;
 	TCCR2A=0x00;
 	TCNT2=0x00;
 	OCR2A=0x00;
 	TIMSK2= (0<<OCIE2A) | (1<<TOIE2) ;
-	Timer1_Init();
+	*/
+	//Timer1_Init();
 	debug.init(9600);
 	panel.initPID(1.5, 0.3, 0.05, 100.0, 2.0);
 	debug.println("*** SEGUIDOR SOLAR INICIADO ***");
@@ -70,7 +67,7 @@ int main() {
 		// 3. Lee los LDRs y actualiza eastFiltered / westFiltered
 		panel.leerSensores();
 		
-		panel.aplicarControlMotor(); 
+		//panel.aplicarControlMotor(); 
 		
 		modbus_poll();                    // <-- atiende peticiones RS-485
 		

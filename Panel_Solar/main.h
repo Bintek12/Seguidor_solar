@@ -87,6 +87,11 @@ extern struct FLAGS flags;
 //EEMEM char eeprom_writed;
 
 // Prototipos de funciones
+void setup();
+void initTimerMillis();
+void setupWatchdog();
+void Timer1_Init();
+
 void chip_init(void);
 void set_defaults(void);
 extern void lcd_init(void);
