@@ -99,8 +99,6 @@ extern uint32_t getMillis(void);
 extern Panel panel;
 
 // Callback para leer Holding Registers (Función 0x03)
-// El maestro solicita 'quantity' registros a partir de 'address'.
-//static 
 nmbs_error read_holding_registers(uint16_t address, uint16_t quantity, uint16_t* registers, uint8_t unit_id, void* arg) {
 	// 'arg' podría ser un puntero a tu objeto Panel. Aquí lo usamos directamente.
 	// Panel* panel = (Panel*)arg;
@@ -128,15 +126,20 @@ nmbs_error read_holding_registers(uint16_t address, uint16_t quantity, uint16_t*
 }
 
 // Callback para leer Input Registers (Función 0x04)
-//static 
 nmbs_error read_input_registers(uint16_t address, uint16_t quantity, uint16_t* registers, uint8_t unit_id, void* arg) {
 	for (uint16_t i = 0; i < quantity; i++) {
 		switch (address + i) {
-			case 0x0010: // // Ángulo actual (x10)
-			 registers[i] = 0;// (uint16_t)(panel.getCurrentAngle() * 10.0f);
+			case 0x0010: 
+			 registers[i] = panel.getEastFiltered(); // (uint16_t)(panel.getCurrentAngle() * 10.0f);
 			break;
-			case 0x0011: // Voltaje Este
-			 registers[i] = panel.getEastFiltered(); // Ya es uint16_t
+			case 0x0011: 
+			 registers[i] = panel.getWestFiltered(); 
+			break;
+			case 0x0012:
+			registers[i] = panel.readTemperature(6); // (uint16_t)(panel.getCurrentAngle() * 10.0f);
+			break;
+			case 0x0013:
+			registers[i] = panel.readTemperature(0);
 			break;
 			case 0x0020: // Temperatura
 			 registers[i] = (uint16_t)(panel.readTemperature(6) * 10.0f);

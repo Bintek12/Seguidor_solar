@@ -34,20 +34,7 @@ void DebugSerial::init(uint32_t baud) {
 	UCSR0C = (1 << UCSZ01) | (1 << UCSZ00);
 }
 
-/*
-void DebugSerial::init(uint32_t baud) {
-    // Configurar RS485 enable como salida
-    DDRD |= (1 << RS485_EN);
-    enableRS485(false);
 
-    // Configurar UART (modo normal, divisor 16)
-    uint16_t ubrr = (F_CPU / (16UL * baud)) - 1;
-    UBRR0H = (uint8_t)(ubrr >> 8);
-    UBRR0L = (uint8_t)ubrr;
-    UCSR0B = (1 << TXEN0);
-    UCSR0C = (1 << UCSZ01) | (1 << UCSZ00);
-}
-*/
 void DebugSerial::print(const char* str) {
     enableRS485(true);
     while (*str) sendByte(*str++);

@@ -21,5 +21,6 @@ class DebugSerial {
 	void sendByte(uint8_t data);
 	void printNumber(long num);
 };
-
+// Declaración de la instancia global (definida en un único .cpp)
+extern DebugSerial debug;
 #endif

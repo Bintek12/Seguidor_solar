@@ -19,7 +19,6 @@ struct USART usart;
 struct FLAGS flags; 
 
 // Variables globales de tiempo
-//extern volatile uint32_t system_ms;
 volatile uint32_t system_ms = 0;  
 
 uint32_t getMillis();
@@ -40,7 +39,7 @@ int main() {
 	Panel panel;
 
     initTimerMillis();
-	//setupWatchdog();
+	setupWatchdog();
 	panel.init();
 	//panel.initTimerMillis();
 	panel.initPID(2.5f, 0.1f, 0.5f, 255.0f, 5.0f);
@@ -48,17 +47,15 @@ int main() {
 	//Timer1_Init();
 	debug.init(MODBUS_BAUDIOS);
 	panel.initPID(1.5, 0.3, 0.05, 100.0, 2.0);
-	debug.println("*** SEGUIDOR SOLAR INICIADO ***");
+	//debug.println("*** SEGUIDOR SOLAR INICIADO ***");
     uint32_t lastPID = 0;
     uint32_t lastMotor = 0;   
 	
-	
-	modbus_init(&panel, MODBUS_BAUDIOS);   // <-- nuevo, después de panel.init()
+	modbus_init(&panel, MODBUS_BAUDIOS); 
 	modbus_timer_init();
 	// Habilitar la interrupción de RX del USART (¡importante!)
 	UCSR0B |= (1 << RXCIE0);
-	sei(); // habilita interrupciones globales
-	
+	sei(); 	
 	
 	while (1) {
 		// 1. refresca el estado de los limites 
@@ -94,9 +91,9 @@ int main() {
 			//debug.println("LÍMITE ALCANZADO - Motor detenido");
 		}   */
 		
-		// 3. Cada 100ms (por ejemplo), llama a la decisión del PID
+		// 3. Cada 200ms (por ejemplo), llama a la decisión del PID
 		static unsigned long lastPID = 0;
-		if (getMillis() - lastPID >= 100) { // 100ms = dt=0.1
+		if (getMillis() - lastPID >= 200) { // 100ms = dt=0.1
 			lastPID = getMillis();
 			//Direccion dir = panel.decidirDireccion();
 			panel.decidirDireccion();
@@ -104,8 +101,8 @@ int main() {
 			// la acción real la hace 'aplicarControlMotor'.
 		}
 
-		// 3. Actualizar motor cada 1 ms (PWM) suave
-		if (getMillis() - lastMotor >= 1) { // Actualiza PWM cada 10ms
+		// 3. Actualizar motor cada 10 ms (PWM) suave
+		if (getMillis() - lastMotor >= 10) { 
 			lastMotor = getMillis();
 			panel.aplicarControlMotor();
 		}
@@ -131,7 +128,7 @@ int main() {
 
 
 		// Debe ejecutarse regularmente, al menos una vez cada 2 segundos (en este ejemplo).
-		//wdt_reset(); // <--- Punto clave para evitar el reinicio[reference:7]
+		wdt_reset(); // <--- Punto clave para evitar el reinicio[reference:7]
 	}	    // end While 
 }           //  End main
 

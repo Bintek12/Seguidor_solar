@@ -70,21 +70,7 @@ struct FLAGS{
 
 extern struct FLAGS flags;
 
-//volatile unsigned char led_blinking;
-//volatile unsigned char sample_counter;
-//int16_t T0_buffer[ADC_BUFFER_SIZE];
-//int16_t T1_buffer[ADC_BUFFER_SIZE];
-//int8_t adc_buffer_index;
-//EEMEM unsigned char active_program_eep;
-//unsigned char active_program_ram;
-
 //Funciones externas
-
-//extern void lcd_goto(); // 1a Linea=0x00, 2a Linea=0x40 
-//extern void lcd_putch(char);
-//extern void lcd_busy(void);
-extern volatile uint16_t bytes_modbus;
-//EEMEM char eeprom_writed;
 
 // Prototipos de funciones
 void setup();
