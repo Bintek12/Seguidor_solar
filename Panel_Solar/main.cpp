@@ -33,36 +33,28 @@ ISR(TIMER1_COMPA_vect) {
 	system_ms++;
 }
 
-
+	DebugSerial debug;
+	
 int main() {
 	Motor motor;
 	Panel panel;
-	DebugSerial debug;
+
     initTimerMillis();
 	//setupWatchdog();
 	panel.init();
 	//panel.initTimerMillis();
 	panel.initPID(2.5f, 0.1f, 0.5f, 255.0f, 5.0f);
     
-	
-	/*
-	chip_init();
-	ASSR=0x00;
-	TCCR2A=0x00;
-	TCNT2=0x00;
-	OCR2A=0x00;
-	TIMSK2= (0<<OCIE2A) | (1<<TOIE2) ;
-	*/
 	//Timer1_Init();
 	debug.init(MODBUS_BAUDIOS);
 	panel.initPID(1.5, 0.3, 0.05, 100.0, 2.0);
 	debug.println("*** SEGUIDOR SOLAR INICIADO ***");
-    //uint32_t lastPID = 0;
-    uint32_t lastMotor = 0;
-	//usart.dirRs485 = DIR_RS485;     
+    uint32_t lastPID = 0;
+    uint32_t lastMotor = 0;   
 	
-	modbus_timer_init();
+	
 	modbus_init(&panel, MODBUS_BAUDIOS);   // <-- nuevo, después de panel.init()
+	modbus_timer_init();
 	// Habilitar la interrupción de RX del USART (¡importante!)
 	UCSR0B |= (1 << RXCIE0);
 	sei(); // habilita interrupciones globales
@@ -74,48 +66,38 @@ int main() {
 		// 3. Lee los LDRs y actualiza eastFiltered / westFiltered
 		panel.leerSensores();
 		
-		//panel.aplicarControlMotor(); 
+		panel.aplicarControlMotor(); 
 	
 		if (frame_ready) {
-			frame_ready = false;
+			 frame_ready = false;
 			nmbs_server_poll(&nmbs);
-			//PORTD &= ~(1 << PD3);
-			//PORTD ^=(1<<PD3);
 		}
-       
+      
 		// Verificar alarma (prioridad máxima)
 		if (panel.isAlarm()) {
 			motor.stop();
-			debug.println("ALARMA ACTIVA - Motor detenido");
+			//debug.println("ALARMA ACTIVA - Motor detenido");
 			_delay_ms(500);
 			continue;
 		}
 		
-		if (panel.limiteEste()) {
-			motor.stop(); // detener motor hacia el este
-		}
-		if (panel.limiteOeste()) {
-			motor.stop(); // detener motor hacia el oeste
-		}
-		if (panel.limiteHorizontal()) {
-			// detener motor de subida/bajada
-		}
-
-
-		// Verificar límite de movimiento
+		if (panel.limiteEste()) { motor.stop(); /* detener motor hacia el este */ }
+		if (panel.limiteOeste()) { motor.stop(); /* detener motor hacia el oeste */	}
+		if (panel.limiteHorizontal()) {	/* detener motor de subida/bajada */ }
+          
+		/* Verificar límite de movimiento
 		switch (panel.limiteActivo()) {
 			case Limite::Este:       motor.stop(); break;
 			case Limite::Oeste:      motor.stop(); break;
-			case Limite::Horizontal: /* ... */ break;
-			case Limite::Ninguno:    /* ... */ break;
+			case Limite::Horizontal:  break;
+			case Limite::Ninguno:     break;
 			//debug.println("LÍMITE ALCANZADO - Motor detenido");
-		}
-			
+		}   */
+		
 		// 3. Cada 100ms (por ejemplo), llama a la decisión del PID
 		static unsigned long lastPID = 0;
 		if (getMillis() - lastPID >= 100) { // 100ms = dt=0.1
 			lastPID = getMillis();
-			// Esto actualiza la variable global 'pidOutput'
 			//Direccion dir = panel.decidirDireccion();
 			panel.decidirDireccion();
 			// Nota: 'dir' solo lo usas para mostrarlo o lógica extra,
@@ -127,42 +109,30 @@ int main() {
 			lastMotor = getMillis();
 			panel.aplicarControlMotor();
 		}
-		// --- Debug cada 500 ms  ---
+		/* --- Debug cada 500 ms  ---
 		static uint32_t lastDebug = 0;
 		if (getMillis() - lastDebug >= 5000) {
 			lastDebug = getMillis();
 			// Mostrar valores por debug
-			/*
-			debug.print("Sensor E:");
-			debug.print(panel.getEastFiltered());
-			debug.print("Sensor W:");
-			debug.print(panel.getWestFiltered());
-			debug.print(" Err:");
-			debug.println(panel.getError());
-			debug.print(" Estado: ");
-			debug.println(panel.getStatusMessage());
-			debug.print(" Temperatura del Panel: ");
-			debug.println(panel.readTemperature());
 			
-			debug.print("ERR:");
-			debug.print((int)(panel.getCurrentError() * 100));
-			debug.print(" PID:");
-			debug.print((int)(panel.getPIDOutput() * 100));
-			debug.print(" DUTY:");
-			debug.print((int)(fabsf(panel.getPIDOutput()) / 100.0 * 100));
-			debug.print("% PB6:");
-			debug.print((PORTB & (1 << PB6)) ? "OESTE" : "ESTE");
-			debug.print(" PB7:");
-			debug.println((PORTB & (1 << PB7)) ? "ON" : "OFF");
-			*/
-		}   // end if (getMillis() 
-		//Modbus_Update_Registers(); // refresca datos de sensores
-		
-		// --- ALIMENTAR AL WATCHDOG ---
-		// Esta llamada reinicia el contador del WDT.
+			debug.print("Sensor E:"); debug.print(panel.getEastFiltered());
+			debug.print("Sensor W:"); debug.print(panel.getWestFiltered());
+			debug.print(" Err:"); debug.println(panel.getError());
+			debug.print(" Estado: "); debug.println(panel.getStatusMessage());
+			debug.print(" Temperatura del Panel: "); debug.println(panel.readTemperature());
+			
+			debug.print("ERR:"); debug.print((int)(panel.getCurrentError() * 100));
+			debug.print(" PID:"); debug.print((int)(panel.getPIDOutput() * 100));
+			debug.print(" DUTY:"); debug.print((int)(fabsf(panel.getPIDOutput()) / 100.0 * 100));
+			debug.print("% PB6:"); debug.print((PORTB & (1 << PB6)) ? "OESTE" : "ESTE");
+			debug.print(" PB7:"); debug.println((PORTB & (1 << PB7)) ? "ON" : "OFF");
+			
+		}   // end if (getMillis()  */
+
+
 		// Debe ejecutarse regularmente, al menos una vez cada 2 segundos (en este ejemplo).
 		//wdt_reset(); // <--- Punto clave para evitar el reinicio[reference:7]
-	}	    // end While
+	}	    // end While 
 }           //  End main
 
 // Función para obtener milisegundos (accesible desde panel.cpp)

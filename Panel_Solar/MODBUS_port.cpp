@@ -2,9 +2,11 @@
 #define F_CPU 8000000UL
 #endif
 
-
+#include "DebugSerial.h"
 #include "MODBUS_port.h"
+#include "MODBUS.h"
 #include "nanomodbus.h"
+
 #include "Panel.h" // Asumo que tu clase Panel está aquí
 #include <avr/interrupt.h>
 #include <avr/io.h>
@@ -22,21 +24,31 @@
 #else
 #define TIMER2_CS_BITS  ((1 << CS22) | (1 << CS21))   // prescaler 32  → 1.024 ms
 #endif
-/*    
-volatile uint8_t  eco_buf[32];
-volatile uint16_t eco_len = 0;
-volatile bool     eco_ready = false;
-volatile uint8_t eco_flags[32];
-volatile uint16_t bytes_modbus = 0;
-   */	
+
 // ---------------- Buffer circular de recepción ----------------
-#define MODBUS_RX_BUF_SIZE  64
+//#define MODBUS_RX_BUF_SIZE  64
+// ---------------- Buffer circular ----------------
+#define MODBUS_RX_BUF_SIZE  256
 
 static volatile uint8_t  rx_buf[MODBUS_RX_BUF_SIZE];
+static volatile uint16_t rx_head     = 0;   // escribe la ISR
+static volatile uint16_t rx_tail     = 0;   // lee modbus_port_read
+volatile bool            frame_ready = false;
+volatile bool            tx_active   = false;
+/*
+static volatile uint8_t  rx_buf[MODBUS_RX_BUF_SIZE];
+//static volatile uint16_t rx_count  = 0;   // bytes escritos por la ISR
+//static volatile uint16_t frame_len = 0;   // longitud de la trama capturada
+//static uint16_t          read_pos  = 0;   // posición de lectura
+volatile bool            frame_ready = false;
+volatile bool            tx_active   = false;   // ← NUEVO: anti-eco
 static volatile uint16_t rx_head = 0;   // escribe la ISR
 static volatile uint16_t rx_tail = 0;   // lee modbus_port_read
-volatile bool     frame_ready = false;
-volatile uint16_t frame_len   = 0;
+
+*/
+// ---------------- Timer2: timeout de fin de trama ----------------
+// Prescaler 128 @ 8 MHz → 4.096 ms
+#define TIMER2_CS_BITS  ((1 << CS22) | (1 << CS20))
 
 // ---------------- Inicialización ----------------
 void modbus_timer_init(void) {
@@ -59,38 +71,28 @@ static inline void modbus_timer_stop(void) {
 }
 
 // ---------------- ISR de recepción ----------------
-ISR(USART_RX_vect){
+ISR(USART_RX_vect) {
 	uint8_t status = UCSR0A;
 	uint8_t data   = UDR0;
 	(void)status;
+
+	if (tx_active) return;
 
 	uint16_t next = (rx_head + 1) % MODBUS_RX_BUF_SIZE;
 	if (next != rx_tail) {
 		rx_buf[rx_head] = data;
 		rx_head = next;
 	}
-	// Reinicia temporizador de fin de trama
+
 	modbus_timer_restart();
-	//PORTD ^=(1<<PD3);
 }
 
-// ---------------- ISR del timer2 (fin de trama) ----------------
 ISR(TIMER2_OVF_vect) {
 	modbus_timer_stop();
-    
-	uint16_t len;
-	if (rx_head >= rx_tail)
-	len = rx_head - rx_tail;
-	else
-	len = MODBUS_RX_BUF_SIZE - rx_tail + rx_head;
-
-	if (len > 0) {
-		frame_len   = len;
+	if (rx_head != rx_tail) {
 		frame_ready = true;
-		//PORTD ^=(1<<PD3);
 	}
 }
-
 extern uint32_t getMillis(void);
 
 // Puntero global a tu objeto Panel (o pásalo a través del argumento 'arg')
@@ -109,7 +111,7 @@ nmbs_error read_holding_registers(uint16_t address, uint16_t quantity, uint16_t*
 				registers[i] = 0;//panel.getOperationMode();
 			break;
 			case 0x0001: // Setpoint de Ángulo
-				registers[i] = 0; //(uint16_t)(panel.getAngleSetpoint() * 10.0f);
+				registers[i] = 45; //(uint16_t)(panel.getAngleSetpoint() * 10.0f);
 			break;
 			case 0x0002: // Umbral parada (x100)
 				registers[i] = (uint16_t)(panel.getStopThreshold() * 100.0f);
@@ -201,7 +203,7 @@ void modbus_port_init(uint32_t baudios) {
 	(void)UCSR0A;  // lectura de cortesía para limpiar flags
 }
 
-// ---------------- Lectura desde buffer circular ----------------
+// ---------------- Lectura circular ----------------
 int32_t modbus_port_read(uint8_t* buf, uint16_t count, int32_t byte_timeout_ms, void* arg) {
 	(void)arg;
 	(void)byte_timeout_ms;
@@ -214,25 +216,31 @@ int32_t modbus_port_read(uint8_t* buf, uint16_t count, int32_t byte_timeout_ms, 
 	return (int32_t)i;
 }
 
+// ---------------- Escritura con anti-eco ----------------
 int32_t modbus_port_write(const uint8_t* buf, uint16_t count, int32_t byte_timeout_ms, void* arg) {
 	(void)byte_timeout_ms;
 	(void)arg;
-    
-	// Activar driver RS-485
+
+	tx_active = true;
+	modbus_timer_stop();
+
 	DE_PORT |= (1 << DE_BIT);
-	_delay_us(50);   // t_setup del MAX485
+	_delay_us(50);
 
 	for (uint16_t i = 0; i < count; i++) {
-		while (!(UCSR0A & (1 << UDRE0))) { /* esperar buffer libre */ }
+		while (!(UCSR0A & (1 << UDRE0))) { }
 		UDR0 = buf[i];
 	}
+	while (!(UCSR0A & (1 << TXC0))) { }
+	UCSR0A |= (1 << TXC0);
 
-	// Esperar a que salga el último byte físicamente
-	while (!(UCSR0A & (1 << TXC0))) { /* esperar transmisión completa */ }
-	UCSR0A |= (1 << TXC0);   // limpiar flag TXC
-
-	_delay_us(50);           // t_hold del MAX485 antes de volver a RX
+	_delay_us(50);
 	DE_PORT &= ~(1 << DE_BIT);
+	_delay_us(100);
 
+	while (UCSR0A & (1 << RXC0)) { (void)UDR0; }
+	rx_head = rx_tail = 0;
+    frame_ready = false;
+	tx_active = false;
 	return (int32_t)count;
 }

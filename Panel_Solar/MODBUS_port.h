@@ -7,15 +7,6 @@
 #include <stddef.h>
 
 
-
-/*    */
-extern volatile uint8_t  eco_buf[32];
-extern volatile uint16_t eco_len;
-extern volatile bool     eco_ready;
-extern volatile uint8_t eco_flags[32];
-extern volatile uint16_t bytes_modbus;
-/*    */
-
 extern volatile bool     frame_ready ;
 void     modbus_port_init(uint32_t baudios);
 int32_t  modbus_port_read (uint8_t* buf, uint16_t count, int32_t byte_timeout_ms, void* arg);
