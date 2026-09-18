@@ -16,13 +16,13 @@ inline int8_t signoDe(Direccion d) {
 }
 
 Panel::Panel()
-: _este(false), _oeste(false), _horizontal(false), eastFiltered(0), westFiltered(0), error(0), stopThreshold(5.0f),
+: _este(false), _oeste(false), _horizontal(false), maFilledEast(false), maFilledWest(false),
+medFilledEast(false), medFilledWest(false),eastFiltered(0), westFiltered(0),error(0), stopThreshold(5.0f),  
 Kp(2.0f), Ki(0.5f), Kd(0.1f),
 integral(0), prevError(0), maxOutput(100.0f),// minOutput(-100.0f),
-maIndexEast(0), maIndexWest(0), maSumEast(0), maSumWest(0),
-maFilledEast(false), maFilledWest(false),
-medIndexEast(0), medIndexWest(0),
-medFilledEast(false), medFilledWest(false) 
+maIndexEast(0), maIndexWest(0), maSumEast(0), maSumWest(0),medIndexEast(0), medIndexWest(0)
+
+
 {
 	init();
 }
@@ -64,7 +64,28 @@ uint16_t Panel::leerADC(uint8_t canal) {
 }
 
 // ---------- Filtro de media móvil ----------
-float Panel::movingAverage(float newValue, float* buffer, uint8_t& index, float& sum, bool& filled) {
+float Panel::movingAverageEast(uint16_t newValue) {
+	maSumEast -= maBufferEast[maIndexEast];
+	maBufferEast[maIndexEast] = newValue;
+	maSumEast += newValue;
+	maIndexEast = (maIndexEast + 1) % MA_WINDOW;
+	if (!maFilledEast && maIndexEast == 0) maFilledEast = true;
+	
+	uint8_t n = maFilledEast ? MA_WINDOW : (maIndexEast == 0 ? MA_WINDOW : maIndexEast);
+	return (float)maSumEast / n;
+}
+float Panel::movingAverageWest(uint16_t newValue) {
+	maSumWest -= maBufferWest[maIndexWest];
+	maBufferWest[maIndexWest] = newValue;
+	maSumWest += newValue;
+	maIndexWest = (maIndexWest + 1) % MA_WINDOW;
+	if (!maFilledWest && maIndexWest == 0) maFilledWest = true;
+	
+	uint8_t n = maFilledWest ? MA_WINDOW : (maIndexWest == 0 ? MA_WINDOW : maIndexWest);
+	return (float)maSumWest / n;
+}
+/*
+uint16_t movingAverage(uint16_t newValue, uint16_t* buffer,	uint8_t& index, uint16_t& sum, bool& filled) {
 	if (!filled) {
 		buffer[index] = newValue;
 		sum += newValue;
@@ -80,7 +101,52 @@ float Panel::movingAverage(float newValue, float* buffer, uint8_t& index, float&
 	index = (index + 1) % MA_WINDOW;
 	return sum / (float)MA_WINDOW;
 }
-
+*/
+uint16_t Panel::medianFilterEast(uint16_t newValue) {
+	medBufferEast[medIndexEast] = newValue;
+	medIndexEast = (medIndexEast + 1) % MED_WINDOW;
+	if (!medFilledEast && medIndexEast == 0) medFilledEast = true;
+	if (!medFilledEast) return newValue;   // aún no hay suficientes muestras
+	
+	// Copia para ordenar y calcular la mediana
+	uint16_t temp[MED_WINDOW];
+	for (uint8_t i = 0; i < MED_WINDOW; i++) temp[i] = medBufferEast[i];
+	// Copiar y ordenar
+	// Ordenamiento simple (burbuja)
+	for (uint8_t i = 0; i < MED_WINDOW - 1; i++) {
+		for (uint8_t j = 0; j < MED_WINDOW - i - 1; j++) {
+			if (temp[j] > temp[j+1]) {
+				uint16_t t = temp[j];
+				temp[j] = temp[j+1];
+				temp[j+1] = t;
+			}
+		}
+	}
+	return temp[MED_WINDOW / 2];
+}
+uint16_t Panel::medianFilterWest(uint16_t newValue) {
+	medBufferWest[medIndexWest] = newValue;
+	medIndexWest = (medIndexWest + 1) % MED_WINDOW;
+	if (!medFilledWest && medIndexWest == 0) medFilledWest = true;
+	if (!medFilledWest) return newValue;   // aún no hay suficientes muestras
+	
+	// Copia para ordenar y calcular la mediana
+	uint16_t temp[MED_WINDOW];
+	for (uint8_t i = 0; i < MED_WINDOW; i++) temp[i] = medBufferWest[i];
+	// Copiar y ordenar
+	// Ordenamiento simple (burbuja)
+	for (uint8_t i = 0; i < MED_WINDOW - 1; i++) {
+		for (uint8_t j = 0; j < MED_WINDOW - i - 1; j++) {
+			if (temp[j] > temp[j+1]) {
+				uint16_t t = temp[j];
+				temp[j] = temp[j+1];
+				temp[j+1] = t;
+			}
+		}
+	}
+	return temp[MED_WINDOW / 2];
+}
+/*
 // ---------- Filtro mediano ----------
 uint16_t Panel::medianFilter(uint16_t newValue, uint16_t* buffer, uint8_t& index, bool& filled) {
 	buffer[index] = newValue;
@@ -106,18 +172,23 @@ uint16_t Panel::medianFilter(uint16_t newValue, uint16_t* buffer, uint8_t& index
 	}
 	return temp[MED_WINDOW / 2];
 }
-
+*/
 void Panel::leerSensores() {
 	uint16_t rawEast = leerADC(LDR_ESTE);
 	uint16_t rawWest = leerADC(LDR_OESTE);
 
 	// Filtro mediano
-	uint16_t medEast = medianFilter(rawEast, medBufferEast, medIndexEast, medFilledEast);
-	uint16_t medWest = medianFilter(rawWest, medBufferWest, medIndexWest, medFilledWest);
+	uint16_t medEast = medianFilterEast(rawEast);
+	//uint16_t medEast = medianFilter(rawEast, medBufferEast, medIndexEast, medFilledEast);
+	//uint16_t medWest = medianFilter(rawWest, medBufferWest, medIndexWest, medFilledWest);
+	uint16_t medWest = medianFilterWest(rawWest);
 
 	// Filtro media móvil
-	eastFiltered = movingAverage((float)medEast, maBufferEast, maIndexEast, maSumEast, maFilledEast);
-	westFiltered = movingAverage((float)medWest, maBufferWest, maIndexWest, maSumWest, maFilledWest);
+	eastFiltered = movingAverageEast(medEast);
+	// ...y para el oeste:
+	westFiltered = movingAverageWest(medWest);
+	//eastFiltered = movingAverage((float)medEast, maBufferEast, maIndexEast, maSumEast, maFilledEast);
+	//westFiltered = movingAverage((float)medWest, maBufferWest, maIndexWest, maSumWest, maFilledWest);
 }
 
 float Panel::getEastFiltered() const { return eastFiltered; }
@@ -142,6 +213,7 @@ const float Kp = 1.5;
 const float Ki = 0.3;
 const float Kd = 0.05;
 
+uint16_t  maSumEast=0, maSumWest=0;
 // Límites de salida (de 0 a 100, representa el % de ancho de pulso)
 const float maxOutput = 100.0;
 const float minOutput = 0.0;

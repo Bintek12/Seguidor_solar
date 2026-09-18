@@ -35,7 +35,7 @@ class Panel {
 	Limite limiteActivo() const;
 	
 	void init();
-	void initTimerMillis();
+	//void initTimerMillis();
 	void leerSensores();
 	Direccion decidirDireccion();
     void aplicarControlMotor(); 
@@ -62,10 +62,16 @@ class Panel {
 	const char* getStatusMessage() const;
 
 	private:
+		
 	//limites
-	bool _este;
-	bool _oeste;
-	bool _horizontal;
+	uint8_t _este        : 1;
+	uint8_t _oeste       : 1;
+	uint8_t _horizontal  : 1;
+	uint8_t maFilledEast : 1;
+	uint8_t maFilledWest : 1;
+	uint8_t medFilledEast: 1;
+	uint8_t medFilledWest: 1;
+	
 	// Valores filtrados
 	float eastFiltered;
 	float westFiltered;
@@ -91,22 +97,23 @@ class Panel {
 	static const uint8_t MED_WINDOW = 5;
 
 	// Media móvil (Este y Oeste)
-	float maBufferEast[MA_WINDOW];
-	float maBufferWest[MA_WINDOW];
+	uint16_t  maBufferEast[MA_WINDOW];
+	uint16_t  maBufferWest[MA_WINDOW];
 	uint8_t maIndexEast, maIndexWest;
-	float maSumEast, maSumWest;
-	bool maFilledEast, maFilledWest;
+	uint16_t  maSumEast, maSumWest;
 
 	// Filtro mediano (Este y Oeste)
 	uint16_t medBufferEast[MED_WINDOW];
 	uint16_t medBufferWest[MED_WINDOW];
 	uint8_t medIndexEast, medIndexWest;
-	bool medFilledEast, medFilledWest;
 
 	// Funciones auxiliares de filtrado
-	float movingAverage(float newValue, float* buffer, uint8_t& index, float& sum, bool& filled);
-	uint16_t medianFilter(uint16_t newValue, uint16_t* buffer, uint8_t& index, bool& filled);
-
+	//uint16_t movingAverage(uint16_t newValue, uint16_t* buffer,	uint8_t& index, uint16_t& sum, bool& filled);
+	float movingAverageEast(uint16_t newValue);
+	float movingAverageWest(uint16_t newValue);
+	//uint16_t medianFilter(uint16_t newValue, uint16_t* buffer, uint8_t& index, bool& filled);
+    uint16_t medianFilterEast(uint16_t newValue);
+    uint16_t medianFilterWest(uint16_t newValue);
 	// ADC y temperatura
 	uint16_t leerADC(uint8_t canal);
 	float calcularTemperatura(uint16_t adcValue);
