@@ -4,11 +4,16 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "Panel.h"
+#include "nanomodbus.h"   // ajusta si tu header se llama distinto
 
 // ID de esclavo MODBUS (0x47 = 71 decimal)
-#define MODBUS_SLAVE_ID     0x47
-#define MODBUS_BAUDIOS      38400UL
+#define MODBUS_SLAVE_ID     0x1
+#define MODBUS_BAUDIOS     9600UL
 #define MODBUS_BYTE_TIMEOUT 5   // ms de silencio por byte
+
+
+extern nmbs_t nmbs;
+
 
 // Mapa de registros (holding registers, FC 0x03)
 enum RegsModbus : uint16_t {
@@ -28,5 +33,9 @@ void modbus_init(Panel* panel, uint32_t baudios);
 
 // Procesa peticiones pendientes. Llamar en cada iteración del loop().
 void modbus_poll(void);
+
+void modbus_init(Panel* panel, uint32_t baudios);
+
+
 
 #endif

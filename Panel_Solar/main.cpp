@@ -3,7 +3,8 @@
 #include "Config.h"
 #include <avr/io.h>
 #include <avr/wdt.h>
-//#include "Modbus_local.h"
+#include "nanoModBus.h"
+#include "MODBUS_port.h"
 
 #define F_CPU (8000000UL)
 #include <util/delay.h>
@@ -38,12 +39,12 @@ int main() {
 	Panel panel;
 	DebugSerial debug;
     initTimerMillis();
-	setupWatchdog();
+	//setupWatchdog();
 	panel.init();
 	//panel.initTimerMillis();
 	panel.initPID(2.5f, 0.1f, 0.5f, 255.0f, 5.0f);
-
-	modbus_init(&panel, MODBUS_BAUDIOS);   // <-- nuevo, después de panel.init()
+    
+	
 	/*
 	chip_init();
 	ASSR=0x00;
@@ -53,13 +54,19 @@ int main() {
 	TIMSK2= (0<<OCIE2A) | (1<<TOIE2) ;
 	*/
 	//Timer1_Init();
-	debug.init(9600);
+	debug.init(MODBUS_BAUDIOS);
 	panel.initPID(1.5, 0.3, 0.05, 100.0, 2.0);
 	debug.println("*** SEGUIDOR SOLAR INICIADO ***");
     //uint32_t lastPID = 0;
     uint32_t lastMotor = 0;
-	usart.dirRs485 = DIR_RS485;     
+	//usart.dirRs485 = DIR_RS485;     
+	
+	modbus_timer_init();
+	modbus_init(&panel, MODBUS_BAUDIOS);   // <-- nuevo, después de panel.init()
+	// Habilitar la interrupción de RX del USART (¡importante!)
+	UCSR0B |= (1 << RXCIE0);
 	sei(); // habilita interrupciones globales
+	
 	
 	while (1) {
 		// 1. refresca el estado de los limites 
@@ -68,9 +75,14 @@ int main() {
 		panel.leerSensores();
 		
 		//panel.aplicarControlMotor(); 
-		
-		modbus_poll();                    // <-- atiende peticiones RS-485
-		
+	
+		if (frame_ready) {
+			frame_ready = false;
+			nmbs_server_poll(&nmbs);
+			//PORTD &= ~(1 << PD3);
+			//PORTD ^=(1<<PD3);
+		}
+       
 		// Verificar alarma (prioridad máxima)
 		if (panel.isAlarm()) {
 			motor.stop();
@@ -149,7 +161,7 @@ int main() {
 		// --- ALIMENTAR AL WATCHDOG ---
 		// Esta llamada reinicia el contador del WDT.
 		// Debe ejecutarse regularmente, al menos una vez cada 2 segundos (en este ejemplo).
-		wdt_reset(); // <--- Punto clave para evitar el reinicio[reference:7]
+		//wdt_reset(); // <--- Punto clave para evitar el reinicio[reference:7]
 	}	    // end While
 }           //  End main
 

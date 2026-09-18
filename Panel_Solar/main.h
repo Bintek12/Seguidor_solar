@@ -83,7 +83,7 @@ extern struct FLAGS flags;
 //extern void lcd_goto(); // 1a Linea=0x00, 2a Linea=0x40 
 //extern void lcd_putch(char);
 //extern void lcd_busy(void);
-
+extern volatile uint16_t bytes_modbus;
 //EEMEM char eeprom_writed;
 
 // Prototipos de funciones
