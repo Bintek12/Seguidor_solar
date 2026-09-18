@@ -247,7 +247,10 @@ typedef struct nmbs_callbacks {
  */
 struct nmbs_t {
     struct {
-        uint8_t buf[260];
+        #ifndef NMBS_MSG_BUF_SIZE
+        #define NMBS_MSG_BUF_SIZE 64
+        #endif
+        uint8_t buf[NMBS_MSG_BUF_SIZE];
         uint16_t buf_idx;
 
         uint8_t unit_id;
