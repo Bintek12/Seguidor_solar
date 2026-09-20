@@ -10,7 +10,7 @@
 #include <util/delay.h>
 #include "Motor.h"
 #include "Panel.h"
-#include "DebugSerial.h"
+//#include "DebugSerial.h"
 
 #include <avr/interrupt.h>
 #include "main.h"
@@ -24,7 +24,10 @@ volatile uint32_t system_ms = 0;
 uint32_t getMillis();
 
 
-Panel panel;   // instancia global como ya tienes
+ // instancia global como ya tienes
+Motor motor;
+Panel panel;  
+
 
 
 // ISR que incrementa el contador
@@ -32,21 +35,20 @@ ISR(TIMER1_COMPA_vect) {
 	system_ms++;
 }
 
-	DebugSerial debug;
+	//DebugSerial debug;
 	
 int main() {
-	Motor motor;
-	Panel panel;
-
-    initTimerMillis();
+	//Motor motor;
+	
+	initTimerMillis();
 	setupWatchdog();
 	panel.init();
 	//panel.initTimerMillis();
-	panel.initPID(2.5f, 0.1f, 0.5f, 255.0f, 5.0f);
+	//panel.initPID(2.5f, 0.1f, 0.5f, 255.0f, 5.0f);
+	panel.initPID(1.5, 0.3, 0.05, 100.0, 2.0);
     
 	//Timer1_Init();
-	debug.init(MODBUS_BAUDIOS);
-	panel.initPID(1.5, 0.3, 0.05, 100.0, 2.0);
+	//debug.init(MODBUS_BAUDIOS);
 	//debug.println("*** SEGUIDOR SOLAR INICIADO ***");
     uint32_t lastPID = 0;
     uint32_t lastMotor = 0;   
@@ -63,7 +65,7 @@ int main() {
 		// 3. Lee los LDRs y actualiza eastFiltered / westFiltered
 		panel.leerSensores();
 		
-		panel.aplicarControlMotor(); 
+		//panel.aplicarControlMotor(); 
 	
 		if (frame_ready) {
 			 frame_ready = false;
@@ -151,6 +153,7 @@ void initTimerMillis() {
 	TIMSK1 = (1 << OCIE1A);
 	sei();
 }
+
 
 void setupWatchdog() {
 	// 1. Limpiar el flag de reinicio por Watchdog (WDRF) en MCUSR

@@ -14,7 +14,7 @@
 
 extern nmbs_t nmbs;
 
-
+/*
 // Mapa de registros (holding registers, FC 0x03)
 enum RegsModbus : uint16_t {
 	REG_ESTE_FILTRADO   = 0,  // uint16, 0..1023  - lectura ADC Este filtrada
@@ -27,15 +27,12 @@ enum RegsModbus : uint16_t {
 	REG_STATUS_MSG      = 7,  // código de estado (entero)
 	REG_COUNT           = 8   // total de registros
 };
-
+*/
 // Inicializa la capa MODBUS. Debe llamarse una vez tras panel.init().
 void modbus_init(Panel* panel, uint32_t baudios);
+//void modbus_init(uint32_t baudios);
 
 // Procesa peticiones pendientes. Llamar en cada iteración del loop().
-void modbus_poll(void);
-
-void modbus_init(Panel* panel, uint32_t baudios);
-
-
+//void modbus_poll(void);
 
 #endif

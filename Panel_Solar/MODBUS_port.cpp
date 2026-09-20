@@ -7,7 +7,7 @@
 #include "MODBUS.h"
 #include "nanomodbus.h"
 
-#include "Panel.h" // Asumo que tu clase Panel está aquí
+#include "Panel.h" 
 #include <avr/interrupt.h>
 #include <avr/io.h>
 #include <util/delay.h>
@@ -35,20 +35,14 @@ static volatile uint16_t rx_head     = 0;   // escribe la ISR
 static volatile uint16_t rx_tail     = 0;   // lee modbus_port_read
 volatile bool            frame_ready = false;
 volatile bool            tx_active   = false;
-/*
-static volatile uint8_t  rx_buf[MODBUS_RX_BUF_SIZE];
-//static volatile uint16_t rx_count  = 0;   // bytes escritos por la ISR
-//static volatile uint16_t frame_len = 0;   // longitud de la trama capturada
-//static uint16_t          read_pos  = 0;   // posición de lectura
-volatile bool            frame_ready = false;
-volatile bool            tx_active   = false;   // ← NUEVO: anti-eco
-static volatile uint16_t rx_head = 0;   // escribe la ISR
-static volatile uint16_t rx_tail = 0;   // lee modbus_port_read
 
-*/
 // ---------------- Timer2: timeout de fin de trama ----------------
 // Prescaler 128 @ 8 MHz → 4.096 ms
 #define TIMER2_CS_BITS  ((1 << CS22) | (1 << CS20))
+
+// Usamos el puntero global definido en MODBUS.cpp
+extern Panel* panel_ref;
+
 
 // ---------------- Inicialización ----------------
 void modbus_timer_init(void) {
@@ -95,27 +89,26 @@ ISR(TIMER2_OVF_vect) {
 }
 extern uint32_t getMillis(void);
 
-// Puntero global a tu objeto Panel (o pásalo a través del argumento 'arg')
-extern Panel panel;
 
 // Callback para leer Holding Registers (Función 0x03)
 nmbs_error read_holding_registers(uint16_t address, uint16_t quantity, uint16_t* registers, uint8_t unit_id, void* arg) {
 	// 'arg' podría ser un puntero a tu objeto Panel. Aquí lo usamos directamente.
-	// Panel* panel = (Panel*)arg;
+	//Panel* panel = (Panel*)arg;
+	Panel* p = panel_ref; 
 	
 	for (uint16_t i = 0; i < quantity; i++) {
 		switch (address + i) {
 			case 0x0000: // Modo de Operación
-				registers[i] = 0;//panel.getOperationMode();
+				registers[i] = 0;
 			break;
 			case 0x0001: // Setpoint de Ángulo
-				registers[i] = 45; //(uint16_t)(panel.getAngleSetpoint() * 10.0f);
+				registers[i] = 45; 
 			break;
 			case 0x0002: // Umbral parada (x100)
-				registers[i] = (uint16_t)(panel.getStopThreshold() * 100.0f);
+				registers[i] = (uint16_t)(p->getStopThreshold() * 100.0f);
 			break;
 			case 0x0003: // Kp
-			  registers[i] = 21; //(uint16_t)(panel.getKp() * 1000.0f);
+			  registers[i] = 21; 
 			break;
 			// ... añade todos los casos para tus Holding Registers ...
 			default:
@@ -127,29 +120,46 @@ nmbs_error read_holding_registers(uint16_t address, uint16_t quantity, uint16_t*
 
 // Callback para leer Input Registers (Función 0x04)
 nmbs_error read_input_registers(uint16_t address, uint16_t quantity, uint16_t* registers, uint8_t unit_id, void* arg) {
+	//Panel* panel = (Panel*)arg;
+	Panel* p = panel_ref; 
 	for (uint16_t i = 0; i < quantity; i++) {
 		switch (address + i) {
 			case 0x0010: 
-			 registers[i] = panel.getEastFiltered(); // (uint16_t)(panel.getCurrentAngle() * 10.0f);
+			 registers[i] = (p->getEastFiltered()); 
 			break;
 			case 0x0011: 
-			 registers[i] = panel.getWestFiltered(); 
+			 registers[i] = (p->getWestFiltered()); 
 			break;
 			case 0x0012:
-			registers[i] = panel.readTemperature(6); // (uint16_t)(panel.getCurrentAngle() * 10.0f);
+			registers[i] = (p->getError());
 			break;
 			case 0x0013:
-			registers[i] = panel.readTemperature(0);
+			registers[i] = (p->getError());
+			break;
+			case 0x0014:
+			registers[i] = (p->getStopThreshold());
+			break;
+			case 0x0015:
+			registers[i] = (p->getCurrentError());
+			break;
+			case 0x0016:
+			registers[i] = (p->getPIDOutput());
+			break;
+			case 0x0017:
+			registers[i] = p->readTemperature(6)*10; 
+			break;
+			case 0x0018:
+			registers[i] = p->readTemperature(0)*10;
 			break;
 			case 0x0020: // Temperatura
-			 registers[i] = (uint16_t)(panel.readTemperature(6) * 10.0f);
+			 registers[i] = (uint16_t)(p->readTemperature(6) * 10.0f);
 			break;
-			case 0x0030: // Estado de Límites (empaquetado en bits)
+			case 0x0080: // Estado de Límites (empaquetado en bits)
 			{
 				 uint16_t status = 0;
-				 if (panel.limiteEste()) status |= (1 << 0);
-				 if (panel.limiteOeste()) status |= (1 << 1);
-				 if (panel.limiteHorizontal()) status |= (1 << 2);
+				 if (p->limiteEste()) status |= (1 << 0);
+				 if (p->limiteOeste()) status |= (1 << 1);
+				 if (p->limiteHorizontal()) status |= (1 << 2);
 				 registers[i] = status;
 			 break;
 		 }

@@ -57,7 +57,8 @@ void Panel::init() {
 }
 
 uint16_t Panel::leerADC(uint8_t canal) {
-	ADMUX = (ADMUX & 0xF0) | (canal & 0x0F);
+	ADMUX = (1 << REFS0) | (canal & 0x0F);
+	//ADMUX = (ADMUX & 0xF0) | (canal & 0x0F);
 	ADCSRA |= (1 << ADSC);
 	while (ADCSRA & (1 << ADSC)) {}
 	return ADC;
@@ -84,24 +85,6 @@ float Panel::movingAverageWest(uint16_t newValue) {
 	uint8_t n = maFilledWest ? MA_WINDOW : (maIndexWest == 0 ? MA_WINDOW : maIndexWest);
 	return (float)maSumWest / n;
 }
-/*
-uint16_t movingAverage(uint16_t newValue, uint16_t* buffer,	uint8_t& index, uint16_t& sum, bool& filled) {
-	if (!filled) {
-		buffer[index] = newValue;
-		sum += newValue;
-		index++;
-		if (index >= MA_WINDOW) {
-			filled = true;
-			index = 0;
-		}
-		return newValue; // mientras no esté lleno, devolvemos el valor sin filtrar
-	}
-	sum = sum - buffer[index] + newValue;
-	buffer[index] = newValue;
-	index = (index + 1) % MA_WINDOW;
-	return sum / (float)MA_WINDOW;
-}
-*/
 uint16_t Panel::medianFilterEast(uint16_t newValue) {
 	medBufferEast[medIndexEast] = newValue;
 	medIndexEast = (medIndexEast + 1) % MED_WINDOW;
@@ -146,52 +129,21 @@ uint16_t Panel::medianFilterWest(uint16_t newValue) {
 	}
 	return temp[MED_WINDOW / 2];
 }
-/*
-// ---------- Filtro mediano ----------
-uint16_t Panel::medianFilter(uint16_t newValue, uint16_t* buffer, uint8_t& index, bool& filled) {
-	buffer[index] = newValue;
-	index = (index + 1) % MED_WINDOW;
-	if (!filled && index == 0) {
-		filled = true;
-	}
-	if (!filled) {
-		return newValue;
-	}
-	// Copiar y ordenar
-	uint16_t temp[MED_WINDOW];
-	for (uint8_t i = 0; i < MED_WINDOW; i++) temp[i] = buffer[i];
-	// Ordenamiento simple (burbuja)
-	for (uint8_t i = 0; i < MED_WINDOW - 1; i++) {
-		for (uint8_t j = 0; j < MED_WINDOW - i - 1; j++) {
-			if (temp[j] > temp[j+1]) {
-				uint16_t t = temp[j];
-				temp[j] = temp[j+1];
-				temp[j+1] = t;
-			}
-		}
-	}
-	return temp[MED_WINDOW / 2];
-}
-*/
 void Panel::leerSensores() {
 	uint16_t rawEast = leerADC(LDR_ESTE);
 	uint16_t rawWest = leerADC(LDR_OESTE);
 
 	// Filtro mediano
 	uint16_t medEast = medianFilterEast(rawEast);
-	//uint16_t medEast = medianFilter(rawEast, medBufferEast, medIndexEast, medFilledEast);
-	//uint16_t medWest = medianFilter(rawWest, medBufferWest, medIndexWest, medFilledWest);
 	uint16_t medWest = medianFilterWest(rawWest);
 
 	// Filtro media móvil
 	eastFiltered = movingAverageEast(medEast);
-	// ...y para el oeste:
 	westFiltered = movingAverageWest(medWest);
-	//eastFiltered = movingAverage((float)medEast, maBufferEast, maIndexEast, maSumEast, maFilledEast);
-	//westFiltered = movingAverage((float)medWest, maBufferWest, maIndexWest, maSumWest, maFilledWest);
+	error = eastFiltered - westFiltered;;
 }
 
-float Panel::getEastFiltered() const { return eastFiltered; }
+float Panel::getEastFiltered() const { return eastFiltered;}
 float Panel::getWestFiltered() const { return westFiltered; }
 float Panel::getError() const { return error; }
 
@@ -279,7 +231,7 @@ Direccion Panel::decidirDireccion() {
 	if (output < -maxOutput) output = -maxOutput;
 
 	pidOutput = output;
-
+   	
 	// 6. Retornar dirección
 	if (output > 0) return Direccion::Este;
 	else if (output < 0) return Direccion::Oeste;
