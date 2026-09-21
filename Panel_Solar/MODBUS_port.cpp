@@ -2,11 +2,12 @@
 #define F_CPU 8000000UL
 #endif
 
-#include "DebugSerial.h"
+//#include "DebugSerial.h"
+#include "MODBUS_reg.h"
 #include "MODBUS_port.h"
 #include "MODBUS.h"
 #include "nanomodbus.h"
-
+#include "EEPROM_log.h"
 #include "Panel.h" 
 #include <avr/interrupt.h>
 #include <avr/io.h>
@@ -36,6 +37,7 @@ static volatile uint16_t rx_tail     = 0;   // lee modbus_port_read
 volatile bool            frame_ready = false;
 volatile bool            tx_active   = false;
 
+static uint16_t sample_interval_s = 60;
 // ---------------- Timer2: timeout de fin de trama ----------------
 // Prescaler 128 @ 8 MHz → 4.096 ms
 #define TIMER2_CS_BITS  ((1 << CS22) | (1 << CS20))
@@ -92,10 +94,23 @@ extern uint32_t getMillis(void);
 
 // Callback para leer Holding Registers (Función 0x03)
 nmbs_error read_holding_registers(uint16_t address, uint16_t quantity, uint16_t* registers, uint8_t unit_id, void* arg) {
-	// 'arg' podría ser un puntero a tu objeto Panel. Aquí lo usamos directamente.
-	//Panel* panel = (Panel*)arg;
 	Panel* p = panel_ref; 
-	
+	 if (address >= MODBUS_LOG_BASE_ADDR &&
+	 address + quantity <= MODBUS_LOG_BASE_ADDR + NUM_SLOTS) {
+		 for (uint16_t i = 0; i < quantity; i++)
+		 registers[i] = eeprom_log_read((uint8_t)(address - MODBUS_LOG_BASE_ADDR + i));
+		 return NMBS_ERROR_NONE;
+	 }
+
+	 // --- Registros de configuración ---
+	 if (address == MODBUS_INTERVAL_REG && quantity == 1) {
+		 registers[0] = sample_interval_s;
+		 return NMBS_ERROR_NONE;
+	 }
+	 if (address == MODBUS_COUNT_REG && quantity == 1) {
+		 registers[0] = NUM_SLOTS;   // o cuenta real si llevas contador
+		 return NMBS_ERROR_NONE;
+	 }
 	for (uint16_t i = 0; i < quantity; i++) {
 		switch (address + i) {
 			case 0x0000: // Modo de Operación
@@ -120,7 +135,6 @@ nmbs_error read_holding_registers(uint16_t address, uint16_t quantity, uint16_t*
 
 // Callback para leer Input Registers (Función 0x04)
 nmbs_error read_input_registers(uint16_t address, uint16_t quantity, uint16_t* registers, uint8_t unit_id, void* arg) {
-	//Panel* panel = (Panel*)arg;
 	Panel* p = panel_ref; 
 	for (uint16_t i = 0; i < quantity; i++) {
 		switch (address + i) {
@@ -171,7 +185,19 @@ nmbs_error read_input_registers(uint16_t address, uint16_t quantity, uint16_t* r
  }
 
 // Callback para escribir un solo Holding Register (Función 0x06)
-static nmbs_error write_single_register(uint16_t address, uint16_t value, uint8_t unit_id, void* arg) {
+nmbs_error write_single_register(uint16_t address, uint16_t value, uint8_t unit_id, void* arg) {
+	Panel* p = panel_ref; 
+	if (address == MODBUS_INTERVAL_REG) {
+		if (value == 0) return NMBS_EXCEPTION_ILLEGAL_DATA_VALUE;
+		sample_interval_s = value;
+		return NMBS_ERROR_NONE;
+	}
+	if (address == MODBUS_TRIGGER_REG && value == 1) {
+		//uint16_t v = (eastFiltered + westFiltered) / 2;
+		uint16_t v = p->getEastFiltered();
+		eeprom_log_write(v);
+		return NMBS_ERROR_NONE;
+	}
 	switch (address) {
 		case 0x0000: // Modo de Operación
 		// panel.setOperationMode((OperationMode)value);
@@ -189,7 +215,8 @@ static nmbs_error write_single_register(uint16_t address, uint16_t value, uint8_
 }
 
 // Callback para escribir múltiples Holding Registers (Función 0x10)
-static nmbs_error write_multiple_registers(uint16_t address, uint16_t quantity, const uint16_t* registers, uint8_t unit_id, void* arg) {
+//static nmbs_error write_multiple_registers(uint16_t address, uint16_t quantity, const uint16_t* registers, uint8_t unit_id, void* arg) {
+nmbs_error write_multiple_registers(uint16_t address, uint16_t quantity,	const uint16_t* registers, uint8_t unit_id,	void* arg) {
 	for (uint16_t i = 0; i < quantity; i++) {
 		// Llama a la lógica de escritura individual para cada registro
 		nmbs_error err = write_single_register(address + i, registers[i], unit_id, arg);
@@ -199,6 +226,7 @@ static nmbs_error write_multiple_registers(uint16_t address, uint16_t quantity, 
 	}
 	return NMBS_ERROR_NONE;
 }
+
 void modbus_port_init(uint32_t baudios) {
 	// Configurar UART0 a 8N1, sin interrupciones (nanoMODBUS hace polling)
 	uint16_t ubrr = (uint16_t)((F_CPU / (16UL * baudios)) - 1);

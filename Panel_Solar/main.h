@@ -19,8 +19,10 @@ Compilador:AVR STUDIO 7
 #include <stdbool.h>
 //#include <avr/interrupt.h>
 //#include <avr/pgmspace.h>
-//#include <avr/eeprom.h>
 //#include <math.h>
+#include <avr/eeprom.h>
+#include <util/crc16.h>
+
 #define F_CPU (8000000UL)
 #include <util/delay.h>
 
@@ -46,8 +48,27 @@ Compilador:AVR STUDIO 7
 #define SETBIT(ADDRESS,BIT) (ADDRESS |= (1<<BIT))
 #define CLEARBIT(ADDRESS,BIT) (ADDRESS &=~(1<<BIT))
 
+// --- Configuración del búfer circular ---
+#define NUM_SLOTS        120
+#define RECORD_SIZE      3          // 2 bytes valor + 1 byte CRC
+#define DATA_BUFFER_START 4
+#define STATUS_BUFFER_START (DATA_BUFFER_START + NUM_SLOTS * RECORD_SIZE)
+#define EEPROM_MAGIC     0xC4
+/*
+// Direcciones Modbus para el búfer de datos
+#define MODBUS_BUFFER_START_ADDR  100   // Registros holding 100..219
+#define MODBUS_CMD_REGISTER       300   // Escribir 1 aquí ? tomar muestra
 
-
+// Registros Modbus personalizados
+#define MODBUS_LOG_BASE_ADDR   100     // 100..219  ? búfer completo
+#define MODBUS_INTERVAL_REG    300     // intervalo en segundos (lo escribe el master)
+#define MODBUS_COUNT_REG       301     // nº de muestras válidas (informativo)
+#define MODBUS_TRIGGER_REG     302     // escribir 1 ? forzar muestra manual
+*/
+static uint32_t last_sample_ms   = 0;
+static uint16_t sample_interval_s = 60;   // por defecto 60 s
+extern volatile uint32_t system_ms; 
+/*
 // Variables Globales
 struct USART {
 	unsigned char rx_index;
@@ -69,7 +90,7 @@ struct FLAGS{
 };
 
 extern struct FLAGS flags;
-
+*/
 //Funciones externas
 
 // Prototipos de funciones
@@ -87,5 +108,9 @@ extern void display_T(void);
 void cmd_decode();
 void leer_sensor(void);
 void control_temperatura(void);
+void init_eeprom_buffer();
+uint8_t find_last_slot();
+void write_ldr_sample(uint16_t ldr_value);
+uint32_t getMillis();
 
 #endif

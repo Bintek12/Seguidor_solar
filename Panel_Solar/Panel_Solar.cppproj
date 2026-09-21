@@ -188,6 +188,14 @@
       <SubType>compile</SubType>
       <Link>DebugSerial.h</Link>
     </Compile>
+    <Compile Include="EEPROM_log.c">
+      <SubType>compile</SubType>
+      <Link>EEPROM_log.c</Link>
+    </Compile>
+    <Compile Include="EEPROM_log.h">
+      <SubType>compile</SubType>
+      <Link>EEPROM_log.h</Link>
+    </Compile>
     <Compile Include="main.cpp">
       <SubType>compile</SubType>
     </Compile>
@@ -210,6 +218,10 @@
     <Compile Include="MODBUS_port.h">
       <SubType>compile</SubType>
       <Link>MODBUS_port.h</Link>
+    </Compile>
+    <Compile Include="MODBUS_reg.h">
+      <SubType>compile</SubType>
+      <Link>MODBUS_reg.h</Link>
     </Compile>
     <Compile Include="motor.cpp">
       <SubType>compile</SubType>

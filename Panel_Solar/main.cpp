@@ -3,27 +3,29 @@
 #include "Config.h"
 #include <avr/io.h>
 #include <avr/wdt.h>
+#include <stdint.h>
 #include "nanoModBus.h"
+#include "MODBUS_reg.h"
 #include "MODBUS_port.h"
 
 #define F_CPU (8000000UL)
 #include <util/delay.h>
 #include "Motor.h"
 #include "Panel.h"
-//#include "DebugSerial.h"
-
+#include "DebugSerial.h"
+#include "EEPROM_log.h"
 #include <avr/interrupt.h>
 #include "main.h"
 
-struct USART usart;
-struct FLAGS flags; 
+//struct USART usart;
+//struct FLAGS flags; 
 
 // Variables globales de tiempo
-volatile uint32_t system_ms = 0;  
+//static uint16_t sample_interval_s = 60;   // por defecto 60 s
 
 uint32_t getMillis();
 
-
+volatile uint32_t system_ms = 0;
  // instancia global como ya tienes
 Motor motor;
 Panel panel;  
@@ -35,7 +37,7 @@ ISR(TIMER1_COMPA_vect) {
 	system_ms++;
 }
 
-	//DebugSerial debug;
+	DebugSerial debug;
 	
 int main() {
 	//Motor motor;
@@ -48,11 +50,12 @@ int main() {
 	panel.initPID(1.5, 0.3, 0.05, 100.0, 2.0);
     
 	//Timer1_Init();
-	//debug.init(MODBUS_BAUDIOS);
-	//debug.println("*** SEGUIDOR SOLAR INICIADO ***");
-    uint32_t lastPID = 0;
+	debug.init(MODBUS_BAUDIOS);
+	debug.println("*** SEGUIDOR SOLAR INICIADO ***");
+    //uint32_t lastPID = 0;
     uint32_t lastMotor = 0;   
-	
+	//init_eeprom_buffer();
+	eeprom_log_init();
 	modbus_init(&panel, MODBUS_BAUDIOS); 
 	modbus_timer_init();
 	// Habilitar la interrupción de RX del USART (¡importante!)
@@ -108,27 +111,13 @@ int main() {
 			lastMotor = getMillis();
 			panel.aplicarControlMotor();
 		}
-		/* --- Debug cada 500 ms  ---
-		static uint32_t lastDebug = 0;
-		if (getMillis() - lastDebug >= 5000) {
-			lastDebug = getMillis();
-			// Mostrar valores por debug
-			
-			debug.print("Sensor E:"); debug.print(panel.getEastFiltered());
-			debug.print("Sensor W:"); debug.print(panel.getWestFiltered());
-			debug.print(" Err:"); debug.println(panel.getError());
-			debug.print(" Estado: "); debug.println(panel.getStatusMessage());
-			debug.print(" Temperatura del Panel: "); debug.println(panel.readTemperature());
-			
-			debug.print("ERR:"); debug.print((int)(panel.getCurrentError() * 100));
-			debug.print(" PID:"); debug.print((int)(panel.getPIDOutput() * 100));
-			debug.print(" DUTY:"); debug.print((int)(fabsf(panel.getPIDOutput()) / 100.0 * 100));
-			debug.print("% PB6:"); debug.print((PORTB & (1 << PB6)) ? "OESTE" : "ESTE");
-			debug.print(" PB7:"); debug.println((PORTB & (1 << PB7)) ? "ON" : "OFF");
-			
-		}   // end if (getMillis()  */
-
-
+		// 3.b. Muestreo autónomo en EEPROM (independiente del master)
+		if ((getMillis() - last_sample_ms) >= (uint32_t)sample_interval_s * 1000UL) {
+			last_sample_ms = getMillis();
+			//uint16_t v = (panel.eastFiltered + panel.westFiltered) / 2;
+			uint16_t v = panel.getEastFiltered();
+			eeprom_log_write(v);
+		}
 		// Debe ejecutarse regularmente, al menos una vez cada 2 segundos (en este ejemplo).
 		wdt_reset(); // <--- Punto clave para evitar el reinicio[reference:7]
 	}	    // end While 
@@ -279,4 +268,53 @@ void chip_init(void)
 	// Global enable interrupts
 	asm("sei");
 
+}
+/*
+void init_eeprom_buffer() {
+	uint8_t magic = eeprom_read_byte((uint8_t*)0);
+	if (magic != EEPROM_MAGIC) {
+		// Inicializar búfer de estado con secuencia 0,1,2,...119
+		for (uint8_t i = 0; i < NUM_SLOTS; i++) {
+			eeprom_write_byte((uint8_t*)(STATUS_BUFFER_START + i), i);
+		}
+		// Inicializar área de datos a 0
+		for (uint16_t i = DATA_BUFFER_START; i < STATUS_BUFFER_START; i++) {
+			eeprom_write_byte((uint8_t*)i, 0);
+		}
+		eeprom_write_byte((uint8_t*)0, EEPROM_MAGIC);
+	}
+}
+*/
+uint8_t find_last_slot() {
+	uint8_t prev = eeprom_read_byte((uint8_t*)(STATUS_BUFFER_START + NUM_SLOTS - 1));
+	for (uint8_t i = 0; i < NUM_SLOTS; i++) {
+		uint8_t curr = eeprom_read_byte((uint8_t*)(STATUS_BUFFER_START + i));
+		if ((uint8_t)(prev + 1) != curr) {
+			return (i == 0) ? (NUM_SLOTS - 1) : (i - 1);
+		}
+		prev = curr;
+	}
+	return NUM_SLOTS - 1; // Búfer lleno, último slot es el 119
+}
+
+void write_ldr_sample(uint16_t ldr_value) {
+	uint8_t last_slot = find_last_slot();
+	uint8_t next_slot = (last_slot + 1) % NUM_SLOTS;
+
+	uint16_t addr = DATA_BUFFER_START + next_slot * RECORD_SIZE;
+	uint8_t crc = 0;
+
+	uint8_t low  = ldr_value & 0xFF;
+	uint8_t high = (ldr_value >> 8) & 0xFF;
+	crc = _crc8_ccitt_update(crc, low);
+	crc = _crc8_ccitt_update(crc, high);
+
+	eeprom_write_byte((uint8_t*)addr, low);
+	eeprom_write_byte((uint8_t*)(addr + 1), high);
+	eeprom_write_byte((uint8_t*)(addr + 2), crc);
+
+	// Actualizar contador de estado del slot
+	uint16_t status_addr = STATUS_BUFFER_START + (uint16_t)next_slot; 
+	uint8_t  status_val  = eeprom_read_byte((uint8_t*)status_addr);
+	eeprom_write_byte((uint8_t*)status_addr, (uint8_t)(status_val + 1));
 }

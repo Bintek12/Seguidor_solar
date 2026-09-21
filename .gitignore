@@ -13,14 +13,26 @@ Panel_Solar/Debug/   # Puedes mantener tu regla específica si quieres
 # Archivos de Visual Studio
 .vs/
 
-# Resultados de compilación
+# Build artifacts de Microchip Studio / AVR
 *.o
 *.d
-*.eep
 *.elf
 *.hex
+*.eep
+*.lss
 *.map
 *.srec
+*.a
+*.usersignatures
+*.cppproj.user
+*.atsln.cache
 
-# Archivos específicos de usuario
-*.atsuo
+# Sistema
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Editores
+*.swp
+*~
+.vscode/
