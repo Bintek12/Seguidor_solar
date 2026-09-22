@@ -21,8 +21,7 @@
 //struct FLAGS flags; 
 
 // Variables globales de tiempo
-//static uint16_t sample_interval_s = 60;   // por defecto 60 s
-
+volatile uint16_t sample_interval_s = 60;   //por defecto 60 s única definición, con valor inicial
 uint32_t getMillis();
 
 volatile uint32_t system_ms = 0;
@@ -37,7 +36,6 @@ ISR(TIMER1_COMPA_vect) {
 	system_ms++;
 }
 
-	DebugSerial debug;
 	
 int main() {
 	//Motor motor;
@@ -50,14 +48,18 @@ int main() {
 	panel.initPID(1.5, 0.3, 0.05, 100.0, 2.0);
     
 	//Timer1_Init();
-	debug.init(MODBUS_BAUDIOS);
-	debug.println("*** SEGUIDOR SOLAR INICIADO ***");
-    //uint32_t lastPID = 0;
     uint32_t lastMotor = 0;   
-	//init_eeprom_buffer();
 	eeprom_log_init();
 	modbus_init(&panel, MODBUS_BAUDIOS); 
 	modbus_timer_init();
+	/* NUEVO: recuperar el intervalo guardado en EEPROM */
+	sample_interval_s = eeprom_log_interval_read();
+	if (sample_interval_s == 0 || sample_interval_s == 0xFFFF) {
+		sample_interval_s = 60;   /* valor de seguridad si la EEPROM está corrupta */
+	}
+
+	/* NUEVO: evitar muestra inmediata al arrancar */
+	last_sample_ms = getMillis();
 	// Habilitar la interrupción de RX del USART (¡importante!)
 	UCSR0B |= (1 << RXCIE0);
 	sei(); 	
