@@ -53,7 +53,7 @@ Compilador:AVR STUDIO 7
 #define RECORD_SIZE      3          // 2 bytes valor + 1 byte CRC
 #define DATA_BUFFER_START 4
 #define STATUS_BUFFER_START (DATA_BUFFER_START + NUM_SLOTS * RECORD_SIZE)
-#define EEPROM_MAGIC     0xC4
+#define EEPROM_MAGIC     0xB8
 /*
 // Direcciones Modbus para el búfer de datos
 #define MODBUS_BUFFER_START_ADDR  100   // Registros holding 100..219
@@ -66,8 +66,8 @@ Compilador:AVR STUDIO 7
 #define MODBUS_TRIGGER_REG     302     // escribir 1 ? forzar muestra manual
 */
 static uint32_t last_sample_ms   = 0;
-static uint16_t sample_interval_s = 60;   // por defecto 60 s
 extern volatile uint32_t system_ms; 
+
 /*
 // Variables Globales
 struct USART {

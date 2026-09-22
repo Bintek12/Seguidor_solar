@@ -37,7 +37,6 @@ static volatile uint16_t rx_tail     = 0;   // lee modbus_port_read
 volatile bool            frame_ready = false;
 volatile bool            tx_active   = false;
 
-static uint16_t sample_interval_s = 60;
 // ---------------- Timer2: timeout de fin de trama ----------------
 // Prescaler 128 @ 8 MHz → 4.096 ms
 #define TIMER2_CS_BITS  ((1 << CS22) | (1 << CS20))
@@ -93,44 +92,83 @@ extern uint32_t getMillis(void);
 
 
 // Callback para leer Holding Registers (Función 0x03)
-nmbs_error read_holding_registers(uint16_t address, uint16_t quantity, uint16_t* registers, uint8_t unit_id, void* arg) {
-	Panel* p = panel_ref; 
-	 if (address >= MODBUS_LOG_BASE_ADDR &&
-	 address + quantity <= MODBUS_LOG_BASE_ADDR + NUM_SLOTS) {
-		 for (uint16_t i = 0; i < quantity; i++)
-		 registers[i] = eeprom_log_read((uint8_t)(address - MODBUS_LOG_BASE_ADDR + i));
-		 return NMBS_ERROR_NONE;
-	 }
+nmbs_error read_holding_registers(uint16_t address, uint16_t quantity,
+                                  uint16_t* registers, uint8_t unit_id, void* arg)
+{
+    Panel* p = panel_ref;
+    if (p == nullptr) return NMBS_EXCEPTION_SERVER_DEVICE_FAILURE;
 
-	 // --- Registros de configuración ---
-	 if (address == MODBUS_INTERVAL_REG && quantity == 1) {
-		 registers[0] = sample_interval_s;
-		 return NMBS_ERROR_NONE;
-	 }
-	 if (address == MODBUS_COUNT_REG && quantity == 1) {
-		 registers[0] = NUM_SLOTS;   // o cuenta real si llevas contador
-		 return NMBS_ERROR_NONE;
-	 }
-	for (uint16_t i = 0; i < quantity; i++) {
-		switch (address + i) {
-			case 0x0000: // Modo de Operación
-				registers[i] = 0;
-			break;
-			case 0x0001: // Setpoint de Ángulo
-				registers[i] = 45; 
-			break;
-			case 0x0002: // Umbral parada (x100)
-				registers[i] = (uint16_t)(p->getStopThreshold() * 100.0f);
-			break;
-			case 0x0003: // Kp
-			  registers[i] = 21; 
-			break;
-			// ... añade todos los casos para tus Holding Registers ...
-			default:
-			return NMBS_EXCEPTION_ILLEGAL_DATA_ADDRESS ;
-		}
-	}
-	return NMBS_ERROR_NONE;
+    /* ============================================================
+       BLOQUE 1: Búfer histórico de muestras — registros 100..219
+       ============================================================ */
+    if (address >= MODBUS_LOG_BASE_ADDR &&
+        address + quantity <= MODBUS_LOG_BASE_ADDR + MODBUS_LOG_COUNT)
+    {
+        for (uint16_t i = 0; i < quantity; i++)
+            registers[i] = eeprom_log_read((uint8_t)(address - MODBUS_LOG_BASE_ADDR + i));
+        return NMBS_ERROR_NONE;
+    }
+
+    /* ============================================================
+       BLOQUE 2: Configuración y estado — registros 300..307
+       Soporta cualquier quantity dentro del rango.
+       ============================================================ */
+    if (address >= MODBUS_INTERVAL_REG &&
+        address + quantity <= MODBUS_LAST_SAMPLE_REG + 1)
+    {
+        uint32_t total    = eeprom_log_total_samples();
+        uint16_t total_lo = (uint16_t)(total & 0xFFFF);
+        uint16_t total_hi = (uint16_t)(total >> 16);
+        uint8_t  next     = eeprom_log_next_slot();
+        uint16_t flags    = eeprom_log_status_flags();
+        uint16_t last     = eeprom_log_last_sample();
+
+        for (uint16_t i = 0; i < quantity; i++) {
+            switch (address + i) {
+                case MODBUS_INTERVAL_REG:    registers[i] = sample_interval_s; break;
+                case MODBUS_TOTAL_LOW_REG:   registers[i] = total_lo;          break;
+                case MODBUS_TRIGGER_REG:     registers[i] = 0;                 break;  /* dummy */
+                case MODBUS_TOTAL_HIGH_REG:  registers[i] = total_hi;          break;
+                case MODBUS_NEXT_SLOT_REG:   registers[i] = next;              break;
+                case MODBUS_BUFFER_CAP_REG:  registers[i] = NUM_SLOTS;         break;
+                case MODBUS_STATUS_REG:      registers[i] = flags;             break;
+                case MODBUS_LAST_SAMPLE_REG: registers[i] = last;              break;
+                default:
+                    return NMBS_EXCEPTION_ILLEGAL_DATA_ADDRESS;
+            }
+        }
+        return NMBS_ERROR_NONE;
+    }
+
+    /* ============================================================
+       BLOQUE 3: Registros legacy de configuración — 0..3
+       ============================================================ */
+    if (address <= 0x0003 && address + quantity <= 0x0004) {
+        for (uint16_t i = 0; i < quantity; i++) {
+            switch (address + i) {
+                case 0x0000: /* Modo de Operación */
+                    registers[i] = 0;
+                    break;
+                case 0x0001: /* Setpoint de Ángulo */
+                    registers[i] = 45;
+                    break;
+                case 0x0002: /* Umbral parada (x100) */
+                    registers[i] = (uint16_t)(p->getStopThreshold() * 100.0f);
+                    break;
+                case 0x0003: /* Kp */
+                    registers[i] = 21;
+                    break;
+                default:
+                    return NMBS_EXCEPTION_ILLEGAL_DATA_ADDRESS;
+            }
+        }
+        return NMBS_ERROR_NONE;
+    }
+
+    /* ============================================================
+       Si llegamos aquí, la dirección no pertenece a ningún bloque
+       ============================================================ */
+    return NMBS_EXCEPTION_ILLEGAL_DATA_ADDRESS;
 }
 
 // Callback para leer Input Registers (Función 0x04)
@@ -187,6 +225,12 @@ nmbs_error read_input_registers(uint16_t address, uint16_t quantity, uint16_t* r
 // Callback para escribir un solo Holding Register (Función 0x06)
 nmbs_error write_single_register(uint16_t address, uint16_t value, uint8_t unit_id, void* arg) {
 	Panel* p = panel_ref; 
+	if (address == MODBUS_INTERVAL_REG) {
+		if (value == 0) return NMBS_EXCEPTION_ILLEGAL_DATA_VALUE;
+		sample_interval_s = value;
+		eeprom_log_interval_write(value);   /* ← NUEVO: persistir en EEPROM */
+		return NMBS_ERROR_NONE;
+	}
 	if (address == MODBUS_INTERVAL_REG) {
 		if (value == 0) return NMBS_EXCEPTION_ILLEGAL_DATA_VALUE;
 		sample_interval_s = value;
