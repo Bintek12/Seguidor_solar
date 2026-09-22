@@ -4,6 +4,17 @@ Todos los cambios relevantes de este proyecto se documentan en este archivo.
 El formato sigue las convenciones de [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/)
 y el proyecto usa [Versionado Semántico](https://semver.org/lang/es/).
 
+
+## [No publicado]
+
+### Añadido
+-
+
+### Cambiado
+-
+
+### Corregido
+-
 ---
 
 ## [1.1] — 2026-09-22
