@@ -36,3 +36,5 @@ desktop.ini
 *.swp
 *~
 .vscode/
+# Carpeta local eliminada (proyecto paralelo, no versionar)
+Seguimiento_Solar/
