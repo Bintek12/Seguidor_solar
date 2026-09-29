@@ -12,7 +12,7 @@
 #define LDR_OESTE  5      // ADC5
 
 // ---------- Pines de alarma y límite ----------
-#define ALARMA_PIN  0     // PB0
+#define ALARMA_PIN  0       // PB0
 #define LIMITE_PIN_E  1     // PC1    Limite al este
 #define LIMITE_PIN_H  2     // PC2    Limite Horizontal
 #define LIMITE_PIN_W  3     // PC3    Limite al Oeste

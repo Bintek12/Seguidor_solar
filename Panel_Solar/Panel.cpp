@@ -3,7 +3,7 @@
 #include "Panel.h"
 #include <avr/io.h>
 #include <math.h>        // Para fabsf
-#include "DebugSerial.h" // Asumo que tienes esta clase
+//#include "DebugSerial.h" // Asumo que tienes esta clase
 
 
 // Definir constantes estáticas
@@ -16,10 +16,9 @@ inline int8_t signoDe(Direccion d) {
 }
 
 Panel::Panel()
-: _este(false), _oeste(false), _horizontal(false), maFilledEast(false), maFilledWest(false),
+: Kp(2.0f), Ki(0.5f), Kd(0.1f),_mode(false), _este(false), _oeste(false), _horizontal(false), maFilledEast(false), maFilledWest(false),
 medFilledEast(false), medFilledWest(false),eastFiltered(0), westFiltered(0),error(0), stopThreshold(5.0f),  
-Kp(2.0f), Ki(0.5f), Kd(0.1f),
-integral(0), prevError(0), maxOutput(100.0f),// minOutput(-100.0f),
+integral(0), prevError(0), maxOutput(100.0f),
 maIndexEast(0), maIndexWest(0), maSumEast(0), maSumWest(0),medIndexEast(0), medIndexWest(0)
 
 
@@ -27,14 +26,19 @@ maIndexEast(0), maIndexWest(0), maSumEast(0), maSumWest(0),medIndexEast(0), medI
 	init();
 }
 
-void Panel::init() {
+void Panel::init() 
+
+{
 	// Configurar ADC
 	ADMUX = (1 << REFS0);
 	ADCSRA = (1 << ADEN) | (1 << ADPS2) | (1 << ADPS1); // prescaler 64
 
 	// Configurar pines de alarma y límite como entradas con pull-up
-	DDRB &= ~((1 << ALARMA_PIN) | (1 << LIMITE_PIN_E)| (1 << LIMITE_PIN_H)| (1 << LIMITE_PIN_W));
-	PORTB |= (1 << ALARMA_PIN) | (1 << LIMITE_PIN_E)| (1 << LIMITE_PIN_H)| (1 << LIMITE_PIN_W);
+	DDRB &= ~(1 << ALARMA_PIN) ;
+	PORTB |= (1 << ALARMA_PIN) ;
+	
+	DDRC &= ~((1 << LIMITE_PIN_E)| (1 << LIMITE_PIN_H)| (1 << LIMITE_PIN_W));
+	PORTC |= (1 << LIMITE_PIN_E)| (1 << LIMITE_PIN_H)| (1 << LIMITE_PIN_W);
 
 	// Inicializar buffers de filtros
 	for (uint8_t i = 0; i < MA_WINDOW; i++) {
@@ -178,13 +182,14 @@ float pidOutput = 0;      // <--- SALIDA DEL PID (VALOR CON SIGNO).
 float currentError = 0;   // Para depuración
 
 // Umbral de parada (banda muerta para evitar ruido)
-const float stopThreshold = 2.0; // Ajusta según tus LDRs
+//const float stopThreshold = 5.0; // Ajusta según tus LDRs
+float stopThreshold = 5.0; // Ajusta según tus LDRs
 
 // Control de dirección (para no quemar el relé PB6)
 int lastDirectionSign = 0; // 1 = ESTE, -1 = OESTE, 0 = STOP
 
 // Variables para el PWM por software en PB7 (Período de 200ms = 5Hz, ideal para relé sólido)
-const unsigned long PWM_PERIOD_MS = 200;
+//const unsigned long PWM_PERIOD_MS = 200;
 unsigned long pwmTimerStart = 0;
 
 // Inicialización de parámetros PID (llamar desde el constructor o setup)
@@ -297,11 +302,23 @@ bool Panel::isAlarm() const {
 	return (PINB & (1 << ALARMA_PIN)) != 0;
 }
 
+void Panel::setOperationMode(OperationMode mode) {
+	mode_ = mode;
+}
+/*
+void Panel::setOperationMode(bool automatic) {
+	mode_ = automatic ? OperationMode::AUTOMATIC : OperationMode::MANUAL;
+}
+*/
+Panel::OperationMode Panel::getOperationMode() const {
+	return mode_;
+}
+
 void Panel::update() {
 	// Lectura activa en bajo: 0 = límite alcanzado
 	_este       = (PINC & (1 << LIMITE_PIN_E)) == 0;
 	_horizontal = (PINC & (1 << LIMITE_PIN_H)) == 0;
-	_oeste      = (PINC & (1 << LIMITE_PIN_W)) == 0;
+	_oeste      = (PINC & (1 << LIMITE_PIN_W)) == 0; 
 }
 
 Limite Panel::limiteActivo() const {

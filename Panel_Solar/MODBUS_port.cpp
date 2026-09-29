@@ -93,8 +93,7 @@ extern uint32_t getMillis(void);
 
 // Callback para leer Holding Registers (Función 0x03)
 nmbs_error read_holding_registers(uint16_t address, uint16_t quantity,
-                                  uint16_t* registers, uint8_t unit_id, void* arg)
-{
+                                  uint16_t* registers, uint8_t unit_id, void* arg){
     Panel* p = panel_ref;
     if (p == nullptr) return NMBS_EXCEPTION_SERVER_DEVICE_FAILURE;
 
@@ -147,16 +146,16 @@ nmbs_error read_holding_registers(uint16_t address, uint16_t quantity,
         for (uint16_t i = 0; i < quantity; i++) {
             switch (address + i) {
                 case 0x0000: /* Modo de Operación */
-                    registers[i] = 0;
+                    registers[i] = static_cast<uint16_t>(p->getOperationMode());
                     break;
-                case 0x0001: /* Setpoint de Ángulo */
-                    registers[i] = 45;
+                case 0x0001: /* Salida Regualdor PID */
+                    registers[i] = (uint16_t)(p->getPIDOutput() * 100.0f);
                     break;
                 case 0x0002: /* Umbral parada (x100) */
-                    registers[i] = (uint16_t)(p->getStopThreshold() * 100.0f);
+                    registers[i] = (uint16_t)(p->getStopThreshold() * 10.0f);
                     break;
-                case 0x0003: /* Kp */
-                    registers[i] = 21;
+                case 0x0003:
+                    registers[i] = (uint16_t)(p->getCurrentError() * 10.0f);
                     break;
                 default:
                     return NMBS_EXCEPTION_ILLEGAL_DATA_ADDRESS;
@@ -175,38 +174,25 @@ nmbs_error read_holding_registers(uint16_t address, uint16_t quantity,
 nmbs_error read_input_registers(uint16_t address, uint16_t quantity, uint16_t* registers, uint8_t unit_id, void* arg) {
 	Panel* p = panel_ref; 
 	for (uint16_t i = 0; i < quantity; i++) {
+		uint16_t val = 0;
 		switch (address + i) {
+			case 0x0000:
+			  val = static_cast<uint16_t>(p->getOperationMode());
+			  registers[i] = val; //(p->getOperationMode());
+			break;
 			case 0x0010: 
-			 registers[i] = (p->getEastFiltered()); 
+			  registers[i] = (p->getEastFiltered()); 
 			break;
 			case 0x0011: 
-			 registers[i] = (p->getWestFiltered()); 
-			break;
-			case 0x0012:
-			registers[i] = (p->getError());
-			break;
-			case 0x0013:
-			registers[i] = (p->getError());
-			break;
-			case 0x0014:
-			registers[i] = (p->getStopThreshold());
-			break;
-			case 0x0015:
-			registers[i] = (p->getCurrentError());
-			break;
-			case 0x0016:
-			registers[i] = (p->getPIDOutput());
+			  registers[i] = (p->getWestFiltered()); 
 			break;
 			case 0x0017:
-			registers[i] = p->readTemperature(6)*10; 
+			  registers[i] = p->readTemperature(6)*10; 
 			break;
 			case 0x0018:
-			registers[i] = p->readTemperature(0)*10;
+			  registers[i] = p->readTemperature(0)*10;
 			break;
-			case 0x0020: // Temperatura
-			 registers[i] = (uint16_t)(p->readTemperature(6) * 10.0f);
-			break;
-			case 0x0080: // Estado de Límites (empaquetado en bits)
+			case 0x0030: // Estado de Límites (empaquetado en bits)
 			{
 				 uint16_t status = 0;
 				 if (p->limiteEste()) status |= (1 << 0);
@@ -228,12 +214,7 @@ nmbs_error write_single_register(uint16_t address, uint16_t value, uint8_t unit_
 	if (address == MODBUS_INTERVAL_REG) {
 		if (value == 0) return NMBS_EXCEPTION_ILLEGAL_DATA_VALUE;
 		sample_interval_s = value;
-		eeprom_log_interval_write(value);   /* ← NUEVO: persistir en EEPROM */
-		return NMBS_ERROR_NONE;
-	}
-	if (address == MODBUS_INTERVAL_REG) {
-		if (value == 0) return NMBS_EXCEPTION_ILLEGAL_DATA_VALUE;
-		sample_interval_s = value;
+		eeprom_log_interval_write(value);   /*  persistir en EEPROM */
 		return NMBS_ERROR_NONE;
 	}
 	if (address == MODBUS_TRIGGER_REG && value == 1) {
@@ -242,15 +223,40 @@ nmbs_error write_single_register(uint16_t address, uint16_t value, uint8_t unit_
 		eeprom_log_write(v);
 		return NMBS_ERROR_NONE;
 	}
+	if (address == 0x0003 && value == 1) {
+		PORTB &= ~(1 << PB6);  // ESTE  -> PB6 = 0
+		PORTB |=  (1 << PB7);  // Encender
+		_delay_ms(100);
+		PORTB &= ~(1 << PB7);  // Apagar
+		return NMBS_ERROR_NONE;
+	}
+	if (address == 0x0004 && value == 1) {
+		PORTB |=  (1 << PB6);  // OESTE -> PB6 = 1
+		PORTB |=  (1 << PB7);  // Encender
+		_delay_ms(100);
+		PORTB &= ~(1 << PB7);  // Apagar
+		return NMBS_ERROR_NONE;
+	}
 	switch (address) {
 		case 0x0000: // Modo de Operación
-		// panel.setOperationMode((OperationMode)value);
+			 // value: 1 = AUTOMATIC, 0 = MANUAL
+			 p->setOperationMode(value ?  Panel::OperationMode::AUTOMATIC : Panel::OperationMode::MANUAL);
 		break;
-		case 0x0001: // Setpoint de Ángulo
+		case 0x0005: // Setpoint de Ángulo
+		  p->setStopThreshold(value);
 		// panel.setAngleSetpoint(value / 10.0f);
 		break;
-		case 0x0003: // Kp
-		// panel.setKp(value / 1000.0f);
+		case 0x0006: // Setpoint de Ángulo
+		  p->Kp = value;
+		// panel.setAngleSetpoint(value / 10.0f);
+		break;
+		case 0x0007: // Setpoint de Ángulo
+		  p->Ki = value;
+		// panel.setAngleSetpoint(value / 10.0f);
+		break;
+		case 0x0008: // Setpoint de Ángulo
+		  p->Kd = value;
+		// panel.setAngleSetpoint(value / 10.0f);
 		break;
 		default:
 		return NMBS_EXCEPTION_ILLEGAL_DATA_ADDRESS;

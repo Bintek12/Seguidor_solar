@@ -24,6 +24,19 @@ enum class Limite {
 class Panel {
 	public:
 	Panel();
+	enum class OperationMode : uint8_t {
+		MANUAL     = 0,
+		AUTOMATIC  = 1
+	};
+	// Modo de operación
+	void setOperationMode(OperationMode mode);   // NO const
+	OperationMode getOperationMode() const;
+	bool isAutomatic() const { return mode_ == OperationMode::AUTOMATIC; }
+	bool isManual()    const { return mode_ == OperationMode::MANUAL; }
+
+    uint16_t getOperationModeRegister() const {
+	    return static_cast<uint16_t>(mode_);
+    }
 	void update();
 	// Consultas rápidas sobre el estado ya leído
 	bool limiteEste()       const { return _este; }
@@ -35,7 +48,6 @@ class Panel {
 	Limite limiteActivo() const;
 	
 	void init();
-	//void initTimerMillis();
 	void leerSensores();
 	Direccion decidirDireccion();
     void aplicarControlMotor(); 
@@ -55,15 +67,16 @@ class Panel {
 
 	// Temperatura (NTC en ADC6)
 	float readTemperature(int ch);
-
+   
 	// Alarmas y límites
 	bool isAlarm() const;
 	//bool isLimit() const;
 	const char* getStatusMessage() const;
-
+    float Kp, Ki, Kd;
 	private:
 		
 	//limites
+	uint8_t _mode        : 1;
 	uint8_t _este        : 1;
 	uint8_t _oeste       : 1;
 	uint8_t _horizontal  : 1;
@@ -76,9 +89,10 @@ class Panel {
 	float eastFiltered;
 	float westFiltered;
 	float error;
-    float stopThreshold;
+    float stopThreshold = 5.0;
+	//const float stopThreshold;
 	// Variables del PID
-	float Kp, Ki, Kd;
+	//float Kp, Ki, Kd;
 
 	float integral;
 	float prevError;
@@ -90,7 +104,8 @@ class Panel {
 	Direccion lastDirection = Direccion::Stop;
 	// Constantes de tiempo
 	static const uint32_t PWM_PERIOD_MS = 200; // Período de 200ms para PWM
-
+	//const unsigned long PWM_PERIOD_MS = 200;
+    OperationMode mode_ = OperationMode::MANUAL;  // valor por defecto
 
 	// ---------- Filtros con buffers estáticos ----------
 	static const uint8_t MA_WINDOW = 10;
