@@ -10,15 +10,11 @@
 
 #define F_CPU (8000000UL)
 #include <util/delay.h>
-#include "Motor.h"
 #include "Panel.h"
 #include "DebugSerial.h"
 #include "EEPROM_log.h"
 #include <avr/interrupt.h>
 #include "main.h"
-
-//struct USART usart;
-//struct FLAGS flags; 
 
 // Variables globales de tiempo
 volatile uint16_t sample_interval_s = 60;   //por defecto 60 s única definición, con valor inicial
@@ -26,7 +22,6 @@ uint32_t getMillis();
 
 volatile uint32_t system_ms = 0;
  // instancia global como ya tienes
-Motor motor;
 Panel panel;  
 
 
@@ -79,15 +74,15 @@ int main() {
       
 		// Verificar alarma (prioridad máxima)
 		if (panel.isAlarm()) {
-			motor.stop();
+			MOTOR_PORT &= ~(1 << MOTOR_POWER);
 			//debug.println("ALARMA ACTIVA - Motor detenido");
 			_delay_ms(500);
 			continue;
 		}
 		// Verificar límite de movimiento
 		switch (panel.limiteActivo()) {
-			case Limite::Este:       motor.stop(); break; /* detener motor hacia el este */
-			case Limite::Oeste:      motor.stop(); break; /* detener motor hacia el oeste */
+			case Limite::Este:       MOTOR_PORT &= ~(1 << MOTOR_POWER); break; /* detener motor hacia el este */
+			case Limite::Oeste:      MOTOR_PORT &= ~(1 << MOTOR_POWER); break; /* detener motor hacia el oeste */
 			case Limite::Horizontal:  break;
 			case Limite::Ninguno:     break;
 		}  
@@ -106,8 +101,7 @@ int main() {
 		if (getMillis() - lastMotor >= 10) { 
 			lastMotor = getMillis();
 			if (panel.getOperationMode()==panel.OperationMode::AUTOMATIC) {
-				panel.decidirDireccion();
-				panel.aplicarControlMotor();
+				panel.actualizarMotor();
 			}
 		}
 		// 3.b. Muestreo autónomo en EEPROM (independiente del master)

@@ -3,13 +3,8 @@
 #include "Panel.h"
 #include <avr/io.h>
 #include <math.h>        // Para fabsf
-//#include "DebugSerial.h" // Asumo que tienes esta clase
+#include "ntc_table.h"
 
-
-// Definir constantes estáticas
-const float Panel::SERIES_RESISTOR = 10000.0f;
-const float Panel::NTC_BETA = 3950.0f;
-const float Panel::NTC_R25 = 10000.0f;
 
 inline int8_t signoDe(Direccion d) {
 	return static_cast<int8_t>(d);
@@ -17,7 +12,7 @@ inline int8_t signoDe(Direccion d) {
 
 Panel::Panel()
 : Kp(2.0f), Ki(0.5f), Kd(0.1f),_mode(false), _este(false), _oeste(false), _horizontal(false), maFilledEast(false), maFilledWest(false),
-medFilledEast(false), medFilledWest(false),eastFiltered(0), westFiltered(0),error(0), stopThreshold(5.0f),  
+medFilledEast(false), medFilledWest(false),eastFiltered(0), westFiltered(0), error(0), stopThreshold(5.0f),  
 integral(0), prevError(0), maxOutput(100.0f),
 maIndexEast(0), maIndexWest(0), maSumEast(0), maSumWest(0),medIndexEast(0), medIndexWest(0)
 
@@ -26,9 +21,7 @@ maIndexEast(0), maIndexWest(0), maSumEast(0), maSumWest(0),medIndexEast(0), medI
 	init();
 }
 
-void Panel::init() 
-
-{
+void Panel::init() {
 	// Configurar ADC
 	ADMUX = (1 << REFS0);
 	ADCSRA = (1 << ADEN) | (1 << ADPS2) | (1 << ADPS1); // prescaler 64
@@ -186,26 +179,171 @@ float currentError = 0;   // Para depuración
 float stopThreshold = 5.0; // Ajusta según tus LDRs
 
 // Control de dirección (para no quemar el relé PB6)
-int lastDirectionSign = 0; // 1 = ESTE, -1 = OESTE, 0 = STOP
+//int lastDirectionSign = 0; // 1 = ESTE, -1 = OESTE, 0 = STOP
+int8_t lastDirectionSign = 0; // 1 = ESTE, -1 = OESTE, 0 = STOP
 
 // Variables para el PWM por software en PB7 (Período de 200ms = 5Hz, ideal para relé sólido)
 //const unsigned long PWM_PERIOD_MS = 200;
 unsigned long pwmTimerStart = 0;
 
 // Inicialización de parámetros PID (llamar desde el constructor o setup)
-void Panel::initPID(float kp, float ki, float kd, float maxOut, float stopThr) {
-	Kp = kp;
-	Ki = ki;
-	Kd = kd;
-	maxOutput = maxOut;
+void Panel::initPID(float kp, float ki, float kd, float maxOut, float stopThr)
+{
+	Kp = kp;  Ki = ki;  Kd = kd;
+	maxOutput     = maxOut;
 	stopThreshold = stopThr;
-	integral = 0.0;
-	prevError = 0.0;
-	pidOutput = 0.0;
-	currentError = 0.0;
-	lastDirectionSign = 0;
+	integral      = 0.0f;
+	prevError     = 0.0f;
+	pidOutput     = 0.0f;
+	currentError  = 0.0f;
+
+	// Precalculados para el PWM
+	k_pwm     = (float)PWM_PERIOD_MS / maxOutput;
+	onTimeMin = (PWM_PERIOD_MS * 15u) / 100u;   // 15 %
+}
+// Constantes escaladas x64
+#define KP_Q     (int16_t)(Kp * 64)
+#define KI_Q     (int16_t)(Ki * 64)
+#define KD_Q     (int16_t)(Kd * 64)
+#define MAXOUT_Q (int16_t)(maxOutput * 64)
+
+void Panel::actualizarMotor(){
+	const uint32_t now = getMillis();
+	static uint32_t lastPidTime = 0;
+
+	// ================= PID cada 100 ms =================
+	if ((uint32_t)(now - lastPidTime) >= 100) {
+		lastPidTime = now;
+
+		currentError = eastFiltered - westFiltered;
+
+		// Banda muerta
+		if (fabsf(currentError) < stopThreshold) {
+			integral  = 0.0f;
+			prevError = 0.0f;
+			pidOutput = 0.0f;
+			} else {
+			const float dt = 0.1f;
+			float output = Kp * currentError
+			+ Ki * integral * dt
+			+ Kd * (currentError - prevError) / dt;
+
+			// Anti-windup
+			if (fabsf(output) < maxOutput)
+			integral += currentError * dt;
+
+			prevError = currentError;
+
+			// Saturación
+			if      (output >  maxOutput) output =  maxOutput;
+			else if (output < -maxOutput) output = -maxOutput;
+
+			pidOutput = output;
+		}
+
+		// Dirección (relé PB6): sólo conmuta si cambia y salimos de ±2
+		if (pidOutput > 2.0f) {
+			if (lastDirection != Direccion::Este) {
+				PORTB &= ~(1 << PB6);
+				lastDirection = Direccion::Este;
+			}
+			} else if (pidOutput < -2.0f) {
+			if (lastDirection != Direccion::Oeste) {
+				PORTB |=  (1 << PB6);
+				lastDirection = Direccion::Oeste;
+			}
+		}
+	}
+
+	// ================= PWM cada llamada =================
+	if (pidOutput == 0.0f || fabsf(currentError) < stopThreshold) {
+		PORTB &= ~(1 << PB7);
+		return;
+	}
+
+	// duty = |pidOutput| / maxOutput  -> evitamos la división usando k_pwm
+	uint32_t onTime = (uint32_t)(fabsf(pidOutput) * k_pwm);
+
+	if      (onTime < onTimeMin)    onTime = onTimeMin;    // mínimo 15 %
+	else if (onTime > PWM_PERIOD_MS) onTime = PWM_PERIOD_MS;
+
+	if ((now % PWM_PERIOD_MS) < onTime)
+	PORTB |=  (1 << PB7);
+	else
+	PORTB &= ~(1 << PB7);
 }
 
+/*
+
+void Panel::actualizarMotor() {
+	extern uint32_t getMillis();
+	static uint32_t lastPidTime = 0;
+	static int32_t  integralQ  = 0;
+	static int16_t  prevErr    = 0;
+	static int16_t  pidOutQ    = 0;
+
+	uint32_t now = getMillis();
+
+	if ((uint32_t)(now - lastPidTime) >= 100) {
+		lastPidTime = now;
+
+		int16_t err = (int16_t)(eastFiltered - westFiltered);   // ya en unidades de sensor
+
+		if (err > -stopThreshold && err < stopThreshold) {
+			integralQ = 0;
+			prevErr   = 0;
+			pidOutQ   = 0;
+			} else {
+			// dt*10 = 1 (trabajamos en décimas para evitar fracciones)
+			int32_t out = (int32_t)KP_Q * err
+			+ (int32_t)KI_Q * integralQ / 10      // * dt(0.1)
+			+ (int32_t)KD_Q * (err - prevErr) * 10;
+
+			// Anti-windup
+			if (out > -MAXOUT_Q && out < MAXOUT_Q)
+			integralQ += err * 10;                        // acumula en décimas
+
+			prevErr = err;
+
+			// Saturación
+			if      (out >  MAXOUT_Q) out =  MAXOUT_Q;
+			else if (out < -MAXOUT_Q) out = -MAXOUT_Q;
+
+			pidOutQ = (int16_t)out;
+		}
+
+		// Dirección
+		if (pidOutQ > 128) {              // 128/64 = 2.0
+			if (lastDirection != Direccion::Este) {
+				PORTB &= ~(1 << PB6);
+				lastDirection = Direccion::Este;
+			}
+			} else if (pidOutQ < -128) {
+			if (lastDirection != Direccion::Oeste) {
+				PORTB |= (1 << PB6);
+				lastDirection = Direccion::Oeste;
+			}
+		}
+	}
+
+	// PWM
+	if (pidOutQ == 0) {
+		PORTB &= ~(1 << PB7);
+		return;
+	}
+
+	int16_t dutyQ = (int16_t)(((int32_t)pidOutQ * 64) / MAXOUT_Q);  // 0..64 aprox
+	if (dutyQ < 0) dutyQ = -dutyQ;
+	if (dutyQ < 10) dutyQ = 10;        // mínimo 15% ~ 10/64
+	if (dutyQ > 64) dutyQ = 64;
+
+	uint32_t onTime = ((uint32_t)dutyQ * PWM_PERIOD_MS) >> 6;
+
+	if ((now % PWM_PERIOD_MS) < onTime)
+	PORTB |=  (1 << PB7);
+	else
+	PORTB &= ~(1 << PB7);
+}
 // Función que calcula el PID y retorna dirección (se llama cada 100 ms)
 Direccion Panel::decidirDireccion() {
 	// 1. Obtener error
@@ -287,16 +425,15 @@ void Panel::aplicarControlMotor() {
 		}
 	}
 }
-float Panel::readTemperature(int ch) {
-	uint16_t adc = leerADC(ch); // ADC6
-	return calcularTemperatura(adc);
+
+*/
+
+int8_t Panel::readTemperature(int ch){
+	uint16_t adc = leerADC(ch);
+	if (adc > 1023) adc = 1023;
+	return (int8_t)pgm_read_byte(&ntcTable[adc]);
 }
 
-float Panel::calcularTemperatura(uint16_t adcValue) {
-	float resistance = SERIES_RESISTOR / ((1023.0f / (float)adcValue) - 1.0f);
-	float tempK = 1.0f / (1.0f/298.15f + (1.0f/NTC_BETA) * logf(resistance / NTC_R25));
-	return tempK - 273.15f;
-}
 
 bool Panel::isAlarm() const {
 	return (PINB & (1 << ALARMA_PIN)) != 0;

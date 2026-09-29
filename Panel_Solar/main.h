@@ -107,7 +107,7 @@ extern void display(void);
 extern void display_T(void);
 void cmd_decode();
 void leer_sensor(void);
-void control_temperatura(void);
+//void control_temperatura(void);
 void init_eeprom_buffer();
 uint8_t find_last_slot();
 void write_ldr_sample(uint16_t ldr_value);

@@ -261,6 +261,7 @@ nmbs_error write_single_register(uint16_t address, uint16_t value, uint8_t unit_
 		default:
 		return NMBS_EXCEPTION_ILLEGAL_DATA_ADDRESS;
 	}
+	
 	return NMBS_ERROR_NONE;
 }
 

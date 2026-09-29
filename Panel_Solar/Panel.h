@@ -6,7 +6,7 @@
 #include <stdbool.h>
 
 
-
+uint32_t getMillis(); 
 
 // Enumeración de dirección (válida en C y C++)
 enum class Direccion : int8_t {
@@ -49,8 +49,8 @@ class Panel {
 	
 	void init();
 	void leerSensores();
-	Direccion decidirDireccion();
-    void aplicarControlMotor(); 
+	void actualizarMotor();  
+	
 	// Getters
 	float getEastFiltered() const;
 	float getWestFiltered() const;
@@ -66,7 +66,7 @@ class Panel {
 	float getStopThreshold() const;
 
 	// Temperatura (NTC en ADC6)
-	float readTemperature(int ch);
+	int8_t readTemperature(int ch);   // -40..125 °C, 1 °C de resolución
    
 	// Alarmas y límites
 	bool isAlarm() const;
@@ -93,7 +93,8 @@ class Panel {
 	//const float stopThreshold;
 	// Variables del PID
 	//float Kp, Ki, Kd;
-
+    float    k_pwm   = 0.0f;   // = PWM_PERIOD_MS / maxOutput  (precalculado en initPID)
+    uint32_t onTimeMin = 30;   // = 15% de 200 ms
 	float integral;
 	float prevError;
 	float maxOutput;
@@ -123,20 +124,14 @@ class Panel {
 	uint8_t medIndexEast, medIndexWest;
 
 	// Funciones auxiliares de filtrado
-	//uint16_t movingAverage(uint16_t newValue, uint16_t* buffer,	uint8_t& index, uint16_t& sum, bool& filled);
+
 	float movingAverageEast(uint16_t newValue);
 	float movingAverageWest(uint16_t newValue);
-	//uint16_t medianFilter(uint16_t newValue, uint16_t* buffer, uint8_t& index, bool& filled);
+
     uint16_t medianFilterEast(uint16_t newValue);
     uint16_t medianFilterWest(uint16_t newValue);
 	// ADC y temperatura
 	uint16_t leerADC(uint8_t canal);
-	float calcularTemperatura(uint16_t adcValue);
-
-	// Constantes NTC
-	static const float SERIES_RESISTOR;
-	static const float NTC_BETA;
-	static const float NTC_R25;
 };
 
 #endif
