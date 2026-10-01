@@ -47,6 +47,11 @@
 extern "C" {
 #endif
 
+#ifndef NMBS_CONFIG_LOADED
+#include "nmbs_config.h"
+#define NMBS_CONFIG_LOADED
+#endif
+
 typedef struct nmbs_t nmbs_t;
 
 /**

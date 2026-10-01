@@ -122,20 +122,6 @@
   <avrgcc.common.outputfiles.usersignatures>False</avrgcc.common.outputfiles.usersignatures>
   <avrgcc.compiler.general.ChangeDefaultCharTypeUnsigned>True</avrgcc.compiler.general.ChangeDefaultCharTypeUnsigned>
   <avrgcc.compiler.general.ChangeDefaultBitFieldUnsigned>True</avrgcc.compiler.general.ChangeDefaultBitFieldUnsigned>
-  <avrgcc.compiler.symbols.DefSymbols>
-    <ListValues>
-      <Value>NMBS_CLIENT_DISABLED</Value>
-      <Value>NMBS_SERVER_READ_DEVICE_IDENTIFICATION_DISABLED</Value>
-      <Value>NMBS_SERVER_WRITE_FILE_RECORD_DISABLED</Value>
-      <Value>NMBS_SERVER_READ_FILE_RECORD_DISABLED</Value>
-      <Value>NMBS_SERVER_WRITE_MULTIPLE_COILS_DISABLED</Value>
-      <Value>NMBS_MSG_BUF_SIZE=32</Value>
-      <Value>NMBS_READ_COILS_DISABLED</Value>
-      <Value>NMBS_READ_DISCRETE_INPUTS_DISABLED</Value>
-      <Value>NMBS_WRITE_SINGLE_COIL_DISABLED</Value>
-      <Value>NMBS_WRITE_MULTIPLE_REGISTERS_DISABLED</Value>
-    </ListValues>
-  </avrgcc.compiler.symbols.DefSymbols>
   <avrgcc.compiler.directories.IncludePaths>
     <ListValues>
       <Value>%24(PackRepoDir)\atmel\ATmega_DFP\1.7.374\include\</Value>
@@ -221,6 +207,10 @@
     </Compile>
     <Compile Include="nanomodbus.h">
       <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="nmbs_config.h">
+      <SubType>compile</SubType>
+      <Link>nmbs_config.h</Link>
     </Compile>
     <Compile Include="ntc_table.h">
       <SubType>compile</SubType>

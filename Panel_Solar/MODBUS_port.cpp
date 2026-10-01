@@ -29,7 +29,7 @@
 // ---------------- Buffer circular de recepción ----------------
 //#define MODBUS_RX_BUF_SIZE  64
 // ---------------- Buffer circular ----------------
-#define MODBUS_RX_BUF_SIZE  256
+#define MODBUS_RX_BUF_SIZE  32
 
 static volatile uint8_t  rx_buf[MODBUS_RX_BUF_SIZE];
 static volatile uint16_t rx_head     = 0;   // escribe la ISR
@@ -40,6 +40,12 @@ volatile bool            tx_active   = false;
 // ---------------- Timer2: timeout de fin de trama ----------------
 // Prescaler 128 @ 8 MHz → 4.096 ms
 #define TIMER2_CS_BITS  ((1 << CS22) | (1 << CS20))
+
+#include "nanomodbus.h"
+
+// Verificación de compilación: falla si el buffer no es 32 en esta unidad
+static_assert(sizeof(((nmbs_t*)0)->msg.buf) == 32,
+"NMBS_MSG_BUF_SIZE no es 32 en esta unidad de compilacion!");
 
 // Usamos el puntero global definido en MODBUS.cpp
 extern Panel* panel_ref;
@@ -151,7 +157,7 @@ nmbs_error read_holding_registers(uint16_t address, uint16_t quantity,
                 case 0x0001: /* Salida Regualdor PID */
                     registers[i] = (uint16_t)(p->getPIDOutput() * 100.0f);
                     break;
-                case 0x0002: /* Umbral parada (x100) */
+                case 0x0002: /* Umbral parada (x10) */
                     registers[i] = (uint16_t)(p->getStopThreshold() * 10.0f);
                     break;
                 case 0x0003:
@@ -178,7 +184,7 @@ nmbs_error read_input_registers(uint16_t address, uint16_t quantity, uint16_t* r
 		switch (address + i) {
 			case 0x0000:
 			  val = static_cast<uint16_t>(p->getOperationMode());
-			  registers[i] = val; //(p->getOperationMode());
+			  registers[i] = val; 
 			break;
 			case 0x0010: 
 			  registers[i] = (p->getEastFiltered()); 
@@ -186,10 +192,10 @@ nmbs_error read_input_registers(uint16_t address, uint16_t quantity, uint16_t* r
 			case 0x0011: 
 			  registers[i] = (p->getWestFiltered()); 
 			break;
-			case 0x0017:
+			case 0x0012:
 			  registers[i] = p->readTemperature(6)*10; 
 			break;
-			case 0x0018:
+			case 0x0013:
 			  registers[i] = p->readTemperature(0)*10;
 			break;
 			case 0x0030: // Estado de Límites (empaquetado en bits)
@@ -242,6 +248,28 @@ nmbs_error write_single_register(uint16_t address, uint16_t value, uint8_t unit_
 			 // value: 1 = AUTOMATIC, 0 = MANUAL
 			 p->setOperationMode(value ?  Panel::OperationMode::AUTOMATIC : Panel::OperationMode::MANUAL);
 		break;
+		case 0x0001: 
+		// value: 1 = AUTOMATIC, 0 = MANUAL
+		p->setOperationMode(value ?  Panel::OperationMode::AUTOMATIC : Panel::OperationMode::MANUAL);
+		break;
+		case 0x0002: 
+		// value: 1 = AUTOMATIC, 0 = MANUAL
+		p->setOperationMode(value ?  Panel::OperationMode::AUTOMATIC : Panel::OperationMode::MANUAL);
+		break;
+		case 0x0003: 
+		// Movmiento manual al ESTE
+			PORTB &= ~(1 << PB6);  // ESTE  -> PB6 = 0
+			PORTB |=  (1 << PB7);  // Encender
+			_delay_ms(100);
+			PORTB &= ~(1 << PB7);  // Apagar
+		break;
+		case 0x0004: 
+		// MOvimiento MAnual al OESTE
+			PORTB |=  (1 << PB6);  // OESTE -> PB6 = 1
+			PORTB |=  (1 << PB7);  // Encender
+			_delay_ms(100);
+			PORTB &= ~(1 << PB7);  // Apagar
+		break;
 		case 0x0005: // Setpoint de Ángulo
 		  p->setStopThreshold(value);
 		// panel.setAngleSetpoint(value / 10.0f);
@@ -255,7 +283,7 @@ nmbs_error write_single_register(uint16_t address, uint16_t value, uint8_t unit_
 		// panel.setAngleSetpoint(value / 10.0f);
 		break;
 		case 0x0008: // Setpoint de Ángulo
-		  p->Kd = value;
+		 // p->Kd = value;
 		// panel.setAngleSetpoint(value / 10.0f);
 		break;
 		default:
@@ -266,7 +294,6 @@ nmbs_error write_single_register(uint16_t address, uint16_t value, uint8_t unit_
 }
 
 // Callback para escribir múltiples Holding Registers (Función 0x10)
-//static nmbs_error write_multiple_registers(uint16_t address, uint16_t quantity, const uint16_t* registers, uint8_t unit_id, void* arg) {
 nmbs_error write_multiple_registers(uint16_t address, uint16_t quantity,	const uint16_t* registers, uint8_t unit_id,	void* arg) {
 	for (uint16_t i = 0; i < quantity; i++) {
 		// Llama a la lógica de escritura individual para cada registro
