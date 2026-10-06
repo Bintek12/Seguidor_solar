@@ -2,9 +2,6 @@
 // panel.cpp
 #include "Panel.h"
 #include <avr/io.h>
-//#include <math.h>        // Para fabsf
-//#include <stdint.h>
-//#include <stdbool.h>
 #include "ntc_table.h"
 #define F_CPU (8000000UL)
 #include <util/delay.h>
@@ -32,10 +29,7 @@ void Panel::init() {
 	// Configurar pines de alarma y límite como entradas con pull-up
 	DDRB &= ~(1 << ALARMA_PIN) ;
 	PORTB |= (1 << ALARMA_PIN) ;
-	/*
-	DDRC &= ~((1 << LIMITE_PIN_E)| (1 << LIMITE_PIN_H)| (1 << LIMITE_PIN_W));
-	PORTC |= (1 << LIMITE_PIN_E)| (1 << LIMITE_PIN_H)| (1 << LIMITE_PIN_W);
-	*/
+	
 	// Configurar como entradas
 	DDRD &= ~((1 << LIMITE_PIN_E) | (1 << LIMITE_PIN_W));
 	// Activar resistencias pull-up internas
@@ -152,8 +146,6 @@ void Panel::leerSensores() {
 	error = eastFiltered - westFiltered;;
 }
 
-//float Panel::getEastFiltered() const { return eastFiltered;}
-//float Panel::getWestFiltered() const { return westFiltered; }
 float Panel::getError() const { return error; }
 
 void Panel::setPIDGains(float kp, float ki, float kd) {
@@ -174,49 +166,20 @@ float Panel::getStopThreshold() const { return stopThreshold; }
 int16_t Kp = 20;   // Ganancia proporcional
 int16_t Ki = 5;    // Ganancia integral
 int16_t Kd = 10;   // Ganancia derivativa
-int16_t stopThreshold = 3;   // Umbral de error muerto
+int16_t stopThreshold = 10;   // Umbral de error muerto
 int16_t maxOutput = 100;     // Saturación máxima
 int16_t k_pwm = 2;          // Escalado PWM
 const uint16_t PWM_PERIOD_MS = 50; // Periodo PWM
 const uint16_t onTimeMin = 8;      // Duty mínimo (~15 %)
 
-/*
-const float Kp = 1.5;
-const float Ki = 0.3;
-const float Kd = 0.05;
-*/
 uint16_t  maSumEast=0, maSumWest=0;
-// Límites de salida (de 0 a 100, representa el % de ancho de pulso)
-//const float maxOutput = 100.0;
-//const float minOutput = 0.0;
-
-// Variables internas del PID
-//float integral = 0;
-//float prevError = 0;
-//float pidOutput = 0;      // <--- SALIDA DEL PID (VALOR CON SIGNO).
-// Positivo = Gira ESTE, Negativo = Gira OESTE.
-//float currentError = 0;   // Para depuración
-
-// Umbral de parada (banda muerta para evitar ruido)
-//const float stopThreshold = 5.0; // Ajusta según tus LDRs
-//float stopThreshold = 5.0; // Ajusta según tus LDRs
-
-// Control de dirección (para no quemar el relé PB6)
-//int lastDirectionSign = 0; // 1 = ESTE, -1 = OESTE, 0 = STOP
-//int8_t lastDirectionSign = 0; // 1 = ESTE, -1 = OESTE, 0 = STOP
-
-// Variables para el PWM por software en PB7 (Período de 200ms = 5Hz, ideal para relé sólido)
-//const unsigned long PWM_PERIOD_MS = 200;
 unsigned long pwmTimerStart = 0;
-
 
 // Variables internas
 int16_t currentError = 0;
 int16_t prevError = 0;
 int32_t integral = 0;
 int16_t pidOutput = 0;
-//static Direccion lastDirection = Direccion::Stop;
-
 
 // Inicialización de parámetros PID (llamar desde el constructor o setup)
 void Panel::initPID(float kp, float ki, float kd, float maxOut, float stopThr)
@@ -228,91 +191,19 @@ void Panel::initPID(float kp, float ki, float kd, float maxOut, float stopThr)
 	prevError     = 0.0f;
 	pidOutput     = 0.0f;
 	currentError  = 0.0f;
-
 	// Precalculados para el PWM
 	k_pwm     = (float)PWM_PERIOD_MS / maxOutput;
 	onTimeMin = (PWM_PERIOD_MS * 15u) / 100u;   // 15 %
 }
-/*
-// Constantes escaladas x64
-#define KP_Q     (int16_t)(Kp * 64)
-#define KI_Q     (int16_t)(Ki * 64)
-#define KD_Q     (int16_t)(Kd * 64)
-#define MAXOUT_Q (int16_t)(maxOutput * 64)
-
-
-void Panel::actualizarMotor(){
-	const uint32_t now = getMillis();
-	static uint32_t lastPidTime = 0;
-	// ================= PID cada 100 ms =================
-	if ((uint32_t)(now - lastPidTime) >= 100) {
-		lastPidTime = now;
-		currentError = eastFiltered - westFiltered;
-		// Banda muerta
-		if (fabsf(currentError) < stopThreshold) {
-			integral  = 0.0f;
-			prevError = 0.0f;
-			pidOutput = 0.0f;
-			} else {
-			const float dt = 0.1f;
-			float output = Kp * currentError
-			+ Ki * integral * dt
-			+ Kd * (currentError - prevError) / dt;
-
-			// Anti-windup
-			if (fabsf(output) < maxOutput)
-			integral += currentError * dt;
-
-			prevError = currentError;
-
-			// Saturación
-			if      (output >  maxOutput) output =  maxOutput;
-			else if (output < -maxOutput) output = -maxOutput;
-
-			pidOutput = output;
-		}
-		// Dirección (relé PB6): sólo conmuta si cambia y salimos de ±2
-		if (pidOutput > 2.0f) {
-			if (lastDirection != Direccion::Este) {
-				PORTB &= ~(1 << PB6);
-				lastDirection = Direccion::Este;
-			}
-			} else if (pidOutput < -2.0f) {
-			if (lastDirection != Direccion::Oeste) {
-				PORTB |=  (1 << PB6);
-				lastDirection = Direccion::Oeste;
-			}
-		}
-	}
-	// ================= PWM cada llamada =================
-	if (pidOutput == 0.0f || fabsf(currentError) < stopThreshold) {
-		PORTB &= ~(1 << PB7);
-		return;
-	}
-	// duty = |pidOutput| / maxOutput  -> evitamos la división usando k_pwm
-	uint32_t onTime = (uint32_t)(fabsf(pidOutput) * k_pwm);
-
-	if      (onTime < onTimeMin)    onTime = onTimeMin;    // mínimo 15 %
-	else if (onTime > PWM_PERIOD_MS) onTime = PWM_PERIOD_MS;
-
-	if ((now % PWM_PERIOD_MS) < onTime)
-	PORTB |=  (1 << PB7);
-	else
-	PORTB &= ~(1 << PB7);
-}
-*/
 
 void Panel::actualizarMotor() {
 	const uint32_t now = getMillis();
 	static uint32_t lastPidTime = 0;
-
 	// ================= PID cada 100 ms =================
 	if ((uint32_t)(now - lastPidTime) >= 100) {
 		lastPidTime = now;
-
 		// Error = diferencia Este - Oeste (ya filtrados en enteros)
 		currentError = eastFiltered - westFiltered;
-
 		// Banda muerta
 		if (abs(currentError) < stopThreshold) {
 			integral  = 0;
@@ -323,20 +214,15 @@ void Panel::actualizarMotor() {
 			int32_t output = (int32_t)Kp * currentError
 			+ (int32_t)Ki * integral * dt
 			+ (int32_t)Kd * (currentError - prevError) / dt;
-
-			// Anti-windup
+  		// Anti-windup
 			if (abs(output) < maxOutput)
 			integral += currentError * dt;
-
 			prevError = currentError;
-
 			// Saturación
 			if      (output >  maxOutput) output =  maxOutput;
 			else if (output < -maxOutput) output = -maxOutput;
-
 			pidOutput = (int16_t)output;
 		}
-
 		// Dirección (relé PB6): sólo conmuta si cambia y salimos de ±2
 		if (pidOutput > 2) {
 			if (lastDirection != Direccion::Este) {
@@ -356,8 +242,6 @@ void Panel::actualizarMotor() {
 		MOTOR_PORT &= ~(1 << MOTOR_POWER); // Apagar motor
 		return;
 	}
-
-	//uint16_t onTime = (uint16_t)(std::abs((int16_t)pidOutput)) * k_pwm;
 	uint16_t onTime = (uint16_t)( (uint16_t)abs(pidOutput) * k_pwm );
 
 	if (onTime < onTimeMin) {
@@ -365,8 +249,6 @@ void Panel::actualizarMotor() {
 		} else if (onTime > (uint16_t)PWM_PERIOD_MS) {
 		onTime = PWM_PERIOD_MS; // máximo duty
 	}
-
-
 	if ((now % PWM_PERIOD_MS) < onTime)
 	MOTOR_PORT |=  (1 << MOTOR_POWER); // Encender
 	else
@@ -393,9 +275,9 @@ Panel::OperationMode Panel::getOperationMode() const {
 
 void Panel::update() {
 	// Lectura activa en bajo: 0 = límite alcanzado
-	_este       = (PINC & (1 << LIMITE_PIN_E)) == 0;
+	_este       = (PIND & (1 << LIMITE_PIN_E)) == 0;
 	_horizontal = (PINC & (1 << LIMITE_PIN_H)) == 0;
-	_oeste      = (PINC & (1 << LIMITE_PIN_W)) == 0; 
+	_oeste      = (PIND & (1 << LIMITE_PIN_W)) == 0; 
 }
 
 Limite Panel::limiteActivo() const {

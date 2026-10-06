@@ -85,18 +85,16 @@ int main() {
 		// Verificar límite de movimiento
 		switch (panel.limiteActivo()) {
 			case Limite::Este:       
-				panel.stop();
 				panel.oeste();   // invertir dirección
 				while (panel.limiteActivo() == Limite::Este) {
-					panel.update();
+					//panel.update();
 				}
 					panel.stop();
 			break; /* detener motor hacia el este */
 			case Limite::Oeste:      
-				panel.stop();
 				panel.este();   // invertir dirección
 				while (panel.limiteActivo() == Limite::Oeste) {
-					panel.update();
+					//panel.update();
 				}
 				panel.stop();
 			break; /* detener motor hacia el oeste */
@@ -104,23 +102,12 @@ int main() {
 			case Limite::Ninguno:     break;
 		}  
 		
-		// 3. Cada 200ms (por ejemplo), llama a la decisión del PID
-		static unsigned long lastPID = 0;
-		if (getMillis() - lastPID >= 100) { // 100ms = dt=0.1
-			lastPID = getMillis();
-			//Direccion dir = panel.decidirDireccion();
-			//panel.decidirDireccion();
-			// Nota: 'dir' solo lo usas para mostrarlo o lógica extra,
-			// la acción real la hace 'aplicarControlMotor'.
-		}
-
 		// 3. Actualizar motor cada 10 ms (PWM) suave
 		if (getMillis() - lastMotor >= 10) { 
 			lastMotor = getMillis();
 			if (panel.getOperationMode()==panel.OperationMode::AUTOMATIC) {
 				panel.actualizarMotor();
-			}
-			
+			}			
 		}
 		// 3.b. Muestreo autónomo en EEPROM (independiente del master)
 		if ((getMillis() - last_sample_ms) >= (uint32_t)sample_interval_s * 1000UL) {

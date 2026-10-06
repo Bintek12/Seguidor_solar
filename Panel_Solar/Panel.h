@@ -97,9 +97,7 @@ class Panel {
 	float westFiltered;
 	float error;
     int16_t stopThreshold = 5.0;
-	//const float stopThreshold;
 	// Variables del PID
-	//float Kp, Ki, Kd;
     int16_t    k_pwm;   // = PWM_PERIOD_MS / maxOutput  (precalculado en initPID)
     uint32_t onTimeMin = 30;   // = 15% de 200 ms
 	float integral;
