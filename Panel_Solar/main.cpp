@@ -30,8 +30,11 @@ Panel panel;
 ISR(TIMER1_COMPA_vect) {
 	system_ms++;
 }
-
-	
+// interrupcion cambio de nivel pines AIN0/AIN1   PD6/PD7 para limites
+ISR(PCINT2_vect) {
+	panel.update();
+}
+ 	
 int main() {
 	//Motor motor;
 	panel.setOperationMode(panel.OperationMode::AUTOMATIC); // /*AUTOMATIC*/); 
@@ -61,7 +64,7 @@ int main() {
 	
 	while (1) {
 		// 1. refresca el estado de los limites 
-		panel.update();
+		//panel.update();
 		// 3. Lee los LDRs y actualiza eastFiltered / westFiltered
 		panel.leerSensores();
 		
@@ -81,8 +84,22 @@ int main() {
 		}
 		// Verificar límite de movimiento
 		switch (panel.limiteActivo()) {
-			case Limite::Este:       MOTOR_PORT &= ~(1 << MOTOR_POWER); break; /* detener motor hacia el este */
-			case Limite::Oeste:      MOTOR_PORT &= ~(1 << MOTOR_POWER); break; /* detener motor hacia el oeste */
+			case Limite::Este:       
+				panel.stop();
+				panel.oeste();   // invertir dirección
+				while (panel.limiteActivo() == Limite::Este) {
+					panel.update();
+				}
+					panel.stop();
+			break; /* detener motor hacia el este */
+			case Limite::Oeste:      
+				panel.stop();
+				panel.este();   // invertir dirección
+				while (panel.limiteActivo() == Limite::Oeste) {
+					panel.update();
+				}
+				panel.stop();
+			break; /* detener motor hacia el oeste */
 			case Limite::Horizontal:  break;
 			case Limite::Ninguno:     break;
 		}  
@@ -103,11 +120,12 @@ int main() {
 			if (panel.getOperationMode()==panel.OperationMode::AUTOMATIC) {
 				panel.actualizarMotor();
 			}
+			
 		}
 		// 3.b. Muestreo autónomo en EEPROM (independiente del master)
 		if ((getMillis() - last_sample_ms) >= (uint32_t)sample_interval_s * 1000UL) {
 			last_sample_ms = getMillis();
-			//uint16_t v = (panel.eastFiltered + panel.westFiltered) / 2;
+			//uint16_t v = (panel.getEastFiltered + panel.getWestFiltered) / 2;
 			uint16_t v = panel.getEastFiltered();
 			eeprom_log_write(v);
 		}

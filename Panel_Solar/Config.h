@@ -13,9 +13,9 @@
 
 // ---------- Pines de alarma y límite ----------
 #define ALARMA_PIN  0       // PB0
-#define LIMITE_PIN_E  1     // PC1    Limite al este
+#define LIMITE_PIN_E  6     // PD6    Limite al este
 #define LIMITE_PIN_H  2     // PC2    Limite Horizontal
-#define LIMITE_PIN_W  3     // PC3    Limite al Oeste
+#define LIMITE_PIN_W  7     // PD7    Limite al Oeste
 
 // ---------- RS485 enable ----------
 #define RS485_EN   PD3  // El mismo que el led

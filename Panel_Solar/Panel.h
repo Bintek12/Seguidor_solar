@@ -28,6 +28,12 @@ class Panel {
 		MANUAL     = 0,
 		AUTOMATIC  = 1
 	};
+	// Métodos de control
+	void este();
+	void oeste();
+	void stop();
+	void accion(Direccion dir);
+
 	// Modo de operación
 	void setOperationMode(OperationMode mode);   // NO const
 	OperationMode getOperationMode() const;
@@ -50,10 +56,11 @@ class Panel {
 	void init();
 	void leerSensores();
 	void actualizarMotor();  
-	
-	// Getters
-	float getEastFiltered() const;
-	float getWestFiltered() const;
+	// Getter del estado actual
+	Direccion getDireccion() const { return lastDirection; }
+	// Getters para sensores filtrados
+	uint16_t getEastFiltered() const { return eastFiltered; }
+	uint16_t getWestFiltered() const { return westFiltered; }
 	float getError() const;
 
 	// PID y umbral
@@ -72,7 +79,7 @@ class Panel {
 	bool isAlarm() const;
 	//bool isLimit() const;
 	const char* getStatusMessage() const;
-    float Kp, Ki, Kd;
+    int16_t Kp, Ki, Kd;
 	private:
 		
 	//limites
@@ -89,22 +96,22 @@ class Panel {
 	float eastFiltered;
 	float westFiltered;
 	float error;
-    float stopThreshold = 5.0;
+    int16_t stopThreshold = 5.0;
 	//const float stopThreshold;
 	// Variables del PID
 	//float Kp, Ki, Kd;
-    float    k_pwm   = 0.0f;   // = PWM_PERIOD_MS / maxOutput  (precalculado en initPID)
+    int16_t    k_pwm;   // = PWM_PERIOD_MS / maxOutput  (precalculado en initPID)
     uint32_t onTimeMin = 30;   // = 15% de 200 ms
 	float integral;
 	float prevError;
-	float maxOutput;
-	float pidOutput;      // Salida con signo (+ = ESTE, - = OESTE)
-	float currentError;
+    int16_t maxOutput;
+	int16_t pidOutput;      // Salida con signo (+ = ESTE, - = OESTE)
+	int16_t currentError;
 
 	// Control de dirección (para proteger relé PB6)
 	Direccion lastDirection = Direccion::Stop;
 	// Constantes de tiempo
-	static const uint32_t PWM_PERIOD_MS = 200; // Período de 200ms para PWM
+	const int16_t PWM_PERIOD_MS = 50; // Período de 200ms para PWM
 	//const unsigned long PWM_PERIOD_MS = 200;
     OperationMode mode_ = OperationMode::MANUAL;  // valor por defecto
 
@@ -132,6 +139,7 @@ class Panel {
     uint16_t medianFilterWest(uint16_t newValue);
 	// ADC y temperatura
 	uint16_t leerADC(uint8_t canal);
+	//Direccion lastDirection = Direccion::Stop;
 };
 
 #endif

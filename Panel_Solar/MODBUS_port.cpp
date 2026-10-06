@@ -229,20 +229,6 @@ nmbs_error write_single_register(uint16_t address, uint16_t value, uint8_t unit_
 		eeprom_log_write(v);
 		return NMBS_ERROR_NONE;
 	}
-	if (address == 0x0003 && value == 1) {
-		PORTB &= ~(1 << PB6);  // ESTE  -> PB6 = 0
-		PORTB |=  (1 << PB7);  // Encender
-		_delay_ms(100);
-		PORTB &= ~(1 << PB7);  // Apagar
-		return NMBS_ERROR_NONE;
-	}
-	if (address == 0x0004 && value == 1) {
-		PORTB |=  (1 << PB6);  // OESTE -> PB6 = 1
-		PORTB |=  (1 << PB7);  // Encender
-		_delay_ms(100);
-		PORTB &= ~(1 << PB7);  // Apagar
-		return NMBS_ERROR_NONE;
-	}
 	switch (address) {
 		case 0x0000: // Modo de Operación
 			 // value: 1 = AUTOMATIC, 0 = MANUAL
@@ -283,25 +269,13 @@ nmbs_error write_single_register(uint16_t address, uint16_t value, uint8_t unit_
 		// panel.setAngleSetpoint(value / 10.0f);
 		break;
 		case 0x0008: // Setpoint de Ángulo
-		 // p->Kd = value;
+		  p->Kd = value;
 		// panel.setAngleSetpoint(value / 10.0f);
 		break;
 		default:
 		return NMBS_EXCEPTION_ILLEGAL_DATA_ADDRESS;
 	}
 	
-	return NMBS_ERROR_NONE;
-}
-
-// Callback para escribir múltiples Holding Registers (Función 0x10)
-nmbs_error write_multiple_registers(uint16_t address, uint16_t quantity,	const uint16_t* registers, uint8_t unit_id,	void* arg) {
-	for (uint16_t i = 0; i < quantity; i++) {
-		// Llama a la lógica de escritura individual para cada registro
-		nmbs_error err = write_single_register(address + i, registers[i], unit_id, arg);
-		if (err != NMBS_ERROR_NONE) {
-			return err;
-		}
-	}
 	return NMBS_ERROR_NONE;
 }
 

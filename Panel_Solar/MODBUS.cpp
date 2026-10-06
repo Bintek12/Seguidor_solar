@@ -39,7 +39,6 @@ void modbus_init(Panel* panel, uint32_t baudios) {
 	callbacks.read_holding_registers = read_holding_registers;
 	callbacks.read_input_registers   = read_input_registers;
 	callbacks.write_single_register = write_single_register; 
-	callbacks.write_multiple_registers = write_multiple_registers;
 	// (los demás quedan nullptr → nanoMODBUS devuelve excepción si los piden)
 	
     // 4. Crear el servidor con las callbacks
